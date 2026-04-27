@@ -30,15 +30,23 @@ MONTH_NAMES = [
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DAY_NAMES_SHORT = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
-# (tint, ink, accent)
+# Restricted 6-colour palette — black, white, yellow, green, blue, red.
+# Each pill = (tint, ink, accent).
+# Slot names kept for back-compat with routine_for().
+YELLOW_TINT, YELLOW_INK, YELLOW = "#fef7d6", "#6b4f00", "#f5c518"
+GREEN_TINT,  GREEN_INK,  GREEN  = "#d4f4dd", "#14532d", "#16a34a"
+BLUE_TINT,   BLUE_INK,   BLUE   = "#dbe7ff", "#1e3a8a", "#2563eb"
+RED_TINT,    RED_INK,    RED    = "#fde0e0", "#7f1d1d", "#dc2626"
+GREY_TINT,   INK_BLACK,  MUTED  = "#f3f4f6", "#111111", "#6b7280"
+
 PILL_COLORS = {
-    "purple": ("#ede9fe", "#5b21b6", "#a78bfa"),
-    "green":  ("#dcfce7", "#166534", "#4ade80"),
-    "pink":   ("#fce7f3", "#9d174d", "#f472b6"),
-    "orange": ("#ffedd5", "#9a3412", "#fb923c"),
-    "blue":   ("#dbeafe", "#1e40af", "#60a5fa"),
-    "grey":   ("#f1f5f9", "#334155", "#94a3b8"),
-    "teal":   ("#ccfbf1", "#0f766e", "#2dd4bf"),
+    "purple": (BLUE_TINT,   BLUE_INK,   BLUE),    # Retinal -> blue
+    "blue":   (YELLOW_TINT, YELLOW_INK, YELLOW),  # Optional Toner -> yellow
+    "green":  (GREEN_TINT,  GREEN_INK,  GREEN),   # Azelaic -> green
+    "pink":   (RED_TINT,    RED_INK,    RED),     # Anua -> red
+    "orange": (YELLOW_TINT, YELLOW_INK, YELLOW),  # Choose One -> yellow
+    "grey":   (GREY_TINT,   INK_BLACK,  MUTED),   # Recovery -> grey/black
+    "teal":   (GREEN_TINT,  GREEN_INK,  GREEN),   # Shaving -> green
 }
 
 ROUTINE_LEGEND = [
@@ -327,7 +335,8 @@ def inject_styles() -> None:
         /* ---------- Background & font ---------- */
         html, body, [data-testid="stAppViewContainer"] {{
             font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
-            background: linear-gradient(180deg, #fafaf9 0%, #f5f3ff 100%) !important;
+            background: #ffffff !important;
+            color: #1f2937;
         }}
         [data-testid="stAppViewContainer"] > .main {{ background: transparent; }}
         .block-container {{
@@ -364,8 +373,8 @@ def inject_styles() -> None:
         .metric .m-cap {{ font-size: 12px; color: #94a3b8; margin-top: 2px; }}
 
         /* ---------- Slim progress bar ---------- */
-        .slim-track {{ height: 6px; background: #f1f5f9; border-radius: 999px; overflow: hidden; }}
-        .slim-fill {{ height: 100%; background: linear-gradient(90deg, #a78bfa, #5b21b6); border-radius: 999px; }}
+        .slim-track {{ height: 6px; background: #f3f4f6; border-radius: 999px; overflow: hidden; }}
+        .slim-fill {{ height: 100%; background: #111111; border-radius: 999px; }}
 
         /* ---------- Calendar grid ---------- */
         .cell-anchor {{ display: none; }}
@@ -397,6 +406,14 @@ def inject_styles() -> None:
             box-shadow: 0 8px 22px rgba(15,23,42,.12);
         }}
         div[data-testid="stColumn"]:has(.cell-anchor.is-empty) div.stButton {{ visibility: hidden; }}
+        div[data-testid="stColumn"]:has(.cell-anchor.is-disabled) div.stButton > button {{
+            background: #fafafa !important;
+            color: #9ca3af !important;
+            border: 1px dashed #e5e7eb !important;
+            box-shadow: none !important;
+            cursor: not-allowed !important;
+            transform: none !important;
+        }}
 
         .cell-wrap {{ position: relative; }}
         .cell-overlay {{
@@ -438,8 +455,16 @@ def inject_styles() -> None:
         /* ---------- Section labels & step rows ---------- */
         .section-label {{
             font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
-            text-transform: uppercase; color: #5b21b6; margin: 18px 0 8px;
+            text-transform: uppercase; color: #111111; margin: 18px 0 8px;
         }}
+        .am-pm-tabs {{ display: flex; border-bottom: 1px solid #e5e7eb; }}
+        .am-pm-tab {{
+            flex: 1; text-align: center; padding: 12px 14px;
+            font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+            color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -1px;
+        }}
+        .am-pm-tab.active {{ color: #111111; border-bottom: 2px solid #111111; }}
+        .am-pm-tab .ok {{ color: #16a34a; margin-left: 6px; }}
         .step-row {{
             display: flex; align-items: flex-start; gap: 12px;
             padding: 10px 0; border-bottom: 1px solid #f1f5f9;
@@ -626,10 +651,18 @@ def render_calendar(month: int) -> None:
         for i, d in enumerate(week):
             with cols[i]:
                 in_range = START_DATE <= d <= END_DATE
-                if d.month != month or not in_range:
+                if d.month != month:
+                    # Spillover: blank spacer to preserve grid shape
                     st.markdown("<span class='cell-anchor is-empty'></span>",
                                 unsafe_allow_html=True)
                     st.button(" ", key=f"empty-{w_idx}-{i}", disabled=True,
+                              use_container_width=True)
+                    continue
+                if not in_range:
+                    # In-month but out of program window: calm dashed tile
+                    st.markdown("<span class='cell-anchor is-disabled'></span>",
+                                unsafe_allow_html=True)
+                    st.button(str(d.day), key=f"oor-{w_idx}-{i}", disabled=True,
                               use_container_width=True)
                     continue
 
@@ -730,53 +763,52 @@ def render_today_panel(ls: LocalStorage) -> None:
         unsafe_allow_html=True,
     )
 
-    # Morning
-    st.markdown("<div class='section-label'>Morning</div>", unsafe_allow_html=True)
+    # ---- Tabbed AM / PM surface ----
     am_done = bool(st.session_state.done.get(f"{k}-am"))
-    if st.button(
-        "✓ Morning done" if am_done else "Mark morning complete",
-        key="am-done",
-        use_container_width=True,
-        type="primary" if am_done else "secondary",
-    ):
-        if am_done:
-            st.session_state.done.pop(f"{k}-am", None)
-            st.toast("Morning unchecked")
-        else:
-            st.session_state.done[f"{k}-am"] = True
-            st.toast("Morning logged ✓")
-        save_done(ls)
-        st.rerun()
-    am_html = "".join(
-        f"<div class='step-row'><span class='step-num'>{i}</span><span>{step}</span></div>"
-        for i, step in enumerate(r["am"], 1)
-    )
-    st.markdown(f"<div class='surface-tight' style='margin-top:8px;'>{am_html}</div>",
-                unsafe_allow_html=True)
-
-    # Night
-    st.markdown("<div class='section-label'>Night</div>", unsafe_allow_html=True)
     pm_done = bool(st.session_state.done.get(f"{k}-pm"))
-    if st.button(
-        "✓ Night done" if pm_done else "Mark night complete",
-        key="pm-done",
-        use_container_width=True,
-        type="primary" if pm_done else "secondary",
-    ):
-        if pm_done:
-            st.session_state.done.pop(f"{k}-pm", None)
-            st.toast("Night unchecked")
+    slot = st.session_state.get("active_slot", "am")
+
+    tab_cols = st.columns(2, gap="small")
+    am_label = "Morning" + ("  ✓" if am_done else "")
+    pm_label = "Night" + ("  ✓" if pm_done else "")
+    with tab_cols[0]:
+        if st.button(am_label, key="tab-am", use_container_width=True,
+                     type="primary" if slot == "am" else "secondary"):
+            st.session_state.active_slot = "am"
+            st.rerun()
+    with tab_cols[1]:
+        if st.button(pm_label, key="tab-pm", use_container_width=True,
+                     type="primary" if slot == "pm" else "secondary"):
+            st.session_state.active_slot = "pm"
+            st.rerun()
+
+    is_am = slot == "am"
+    steps = r["am"] if is_am else r["pm"]
+    slot_done = am_done if is_am else pm_done
+    steps_html = "".join(
+        f"<div class='step-row'><span class='step-num'>{i}</span><span>{step}</span></div>"
+        for i, step in enumerate(steps, 1)
+    )
+    st.markdown(
+        f"<div class='surface-tight' style='margin-top:10px;'>{steps_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+    if slot_done:
+        btn_label = "✓ Morning done" if is_am else "✓ Night done"
+    else:
+        btn_label = "Mark morning complete" if is_am else "Mark night complete"
+    if st.button(btn_label, key=f"complete-{slot}", use_container_width=True,
+                 type="primary" if slot_done else "secondary"):
+        slot_key = f"{k}-{slot}"
+        if slot_done:
+            st.session_state.done.pop(slot_key, None)
+            st.toast(f"{'Morning' if is_am else 'Night'} unchecked")
         else:
-            st.session_state.done[f"{k}-pm"] = True
-            st.toast("Night logged ✓")
+            st.session_state.done[slot_key] = True
+            st.toast(f"{'Morning' if is_am else 'Night'} logged ✓")
         save_done(ls)
         st.rerun()
-    pm_html = "".join(
-        f"<div class='step-row'><span class='step-num'>{i}</span><span>{step}</span></div>"
-        for i, step in enumerate(r["pm"], 1)
-    )
-    st.markdown(f"<div class='surface-tight' style='margin-top:8px;'>{pm_html}</div>",
-                unsafe_allow_html=True)
 
 
 def render_sidebar(ls: LocalStorage) -> None:
@@ -799,17 +831,27 @@ def render_sidebar(ls: LocalStorage) -> None:
         prod_html = "".join(f"<div class='product-row'>{p}</div>" for p in PRODUCTS)
         st.markdown(prod_html, unsafe_allow_html=True)
 
-        st.markdown("<div class='label-tiny' style='margin-top:18px;'>Rules of thumb</div>",
-                    unsafe_allow_html=True)
+        # ---- Rule of thumb (one card; pager dots) ----
+        tips = [
+            ("Sunscreen", "Beauty of Joseon Aqua Fresh first. Numbuzin or SKIN1004 as backup."),
+            ("Morning",   "Keep it light. Don't layer Purito + Snail + Vanicream unless skin is dry."),
+            ("Shaving",   "Skip actives on shaving days — calming products and moisturiser only."),
+        ]
+        tip_idx = st.session_state.get("tip_idx", 0) % len(tips)
         st.markdown(
-            """
-            <div class='tip-card'><strong>Sunscreen choice.</strong> Use Beauty of Joseon Aqua Fresh first.
-            Backup: Numbuzin if acne fear matters most. SKIN1004 if watery feel matters most.</div>
-            <div class='tip-card'><strong>Morning rule.</strong> Keep morning light. Do not layer Purito + Snail + Vanicream
-            unless your skin is actually dry.</div>
-            <div class='tip-card'><strong>Shaving rule.</strong> On shaving days, skip strong actives.
-            Shaving already stresses the skin, so use calming products and moisturiser only.</div>
-            """,
+            "<div class='label-tiny' style='margin-top:18px;'>Rule of thumb</div>",
+            unsafe_allow_html=True,
+        )
+        dot_cols = st.columns([6, 1, 1, 1])
+        for i in range(len(tips)):
+            with dot_cols[i + 1]:
+                if st.button("●" if i == tip_idx else "○",
+                             key=f"tip-dot-{i}", use_container_width=True):
+                    st.session_state.tip_idx = i
+                    st.rerun()
+        title, body = tips[tip_idx]
+        st.markdown(
+            f"<div class='tip-card'><strong>{title}.</strong> {body}</div>",
             unsafe_allow_html=True,
         )
 
