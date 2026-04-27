@@ -460,46 +460,18 @@ def build_routine_surface_html(
     pm_done: bool,
     slot_done: bool,
 ) -> str:
-    is_am = active_slot == "am"
-    tab_html = []
-    for slot, label, is_done in (("am", "Morning", am_done), ("pm", "Night", pm_done)):
-        classes = ["routine-tab"]
-        if slot == active_slot:
-            classes.append("is-active")
-        check = "<span class='tab-check'>✓</span>" if is_done else ""
-        tab_html.append(f"<div class='{' '.join(classes)}'>{label}{check}</div>")
-
+    """Render only the steps list. Tab + CTA are real Streamlit buttons."""
+    is_am = active_slot == "am"  # noqa: F841
     step_rows = []
     for i, step in enumerate(steps, 1):
-        classes = ["step-row"]
-        if slot_done:
-            classes.append("done")
-        elif i == 1:
-            classes.append("active")
+        cls = "step-row done" if slot_done else "step-row"
         step_rows.append(
-            f"<div class='{' '.join(classes)}'>"
+            f"<div class='{cls}'>"
             f"<span class='step-num'><span>{i}</span></span>"
-            "<div>"
             f"<div class='step-text'>{html.escape(step)}</div>"
             "</div>"
-            "</div>"
         )
-    steps_html = "".join(step_rows)
-    done_class = " is-done" if slot_done else ""
-    cta_label = (
-        "✓ Morning done" if is_am and slot_done else
-        "✓ Night done" if slot_done else
-        "Mark morning complete" if is_am else
-        "Mark night complete"
-    )
-
-    return f"""
-        <div class="routine-surface">
-            <div class="routine-tabs">{''.join(tab_html)}</div>
-            <div class="routine-steps surface-tight">{steps_html}</div>
-            <div class="routine-complete-preview{done_class}">{cta_label}</div>
-        </div>
-    """
+    return "<div class='routine-steps'>" + "".join(step_rows) + "</div>"
 
 # ---------------------------------------------------------------------------
 # Global styles
@@ -827,111 +799,70 @@ def inject_styles() -> None:
             border: 1px solid #e5e7eb;
             box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
             overflow: hidden;
-            margin-top: 10px;
+            margin-top: 14px;
         }}
-        .routine-tabs {{
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            border-bottom: 1px solid #e5e7eb;
-        }}
-        .routine-tab {{
-            min-height: 44px;
-            display: flex; align-items: center; justify-content: center; gap: 6px;
-            color: #6b7280; font-size: 13px; font-weight: 700;
-            letter-spacing: 0.04em;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -1px;
-        }}
-        .routine-tab.is-active {{ color: #111111; border-bottom-color: #111111; }}
-        .routine-tab .tab-check {{ color: #16a34a; font-size: 14px; }}
-        .routine-steps.surface-tight {{
+        .routine-steps {{
+            padding: 6px 16px 10px;
             background: #ffffff;
-            border-radius: 0;
-            padding: 6px 16px;
-            box-shadow: none;
-            position: relative;
-        }}
-        .routine-steps.surface-tight::before {{
-            content: "";
-            position: absolute;
-            left: 27px;
-            top: 22px;
-            bottom: 22px;
-            width: 2px;
-            background: linear-gradient(180deg, #2563eb, #f3f4f6);
-            border-radius: 2px;
         }}
         .step-row {{
             display: flex; align-items: flex-start; gap: 14px;
             padding: 12px 0; border-bottom: 1px solid #e5e7eb;
             font-size: 14px; color: #1f2937; line-height: 1.5;
-            position: relative; transition: background 160ms ease;
         }}
         .step-row:last-child {{ border-bottom: none; }}
         .step-num {{
             width: 24px; height: 24px; border-radius: 50%;
-            background: #ffffff; color: #6b7280;
+            background: #f3f4f6; color: #4b5563;
             font-size: 12px; font-weight: 700;
             display: inline-flex; align-items: center; justify-content: center;
             flex: 0 0 auto;
-            border: 2px solid #e5e7eb;
-            position: relative; z-index: 1;
             transition: all 160ms ease;
         }}
         .step-row.done .step-num {{
-            background: #111111; border-color: #111111; color: #ffffff;
+            background: #16a34a; color: #ffffff;
         }}
-        .step-row.done .step-num::before {{ content: "✓"; font-size: 12px; }}
         .step-row.done .step-num span {{ display: none; }}
+        .step-row.done .step-num::before {{ content: "✓"; font-size: 13px; }}
         .step-row.done .step-text {{
             color: #9ca3af;
             text-decoration: line-through;
-            text-decoration-color: #9ca3af;
             text-decoration-thickness: 1px;
         }}
-        .step-row.active {{
-            background: linear-gradient(90deg, #dbe7ff 0%, transparent 60%);
-            border-radius: 8px;
-            margin: 0 -8px;
-            padding: 12px 8px;
+        .step-text {{ flex: 1; }}
+
+        /* Tab buttons (real Streamlit buttons) */
+        div.st-key-tab-am button,
+        div.st-key-tab-pm button {{
+            background: #ffffff !important;
+            color: #6b7280 !important;
+            border: 0 !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            min-height: 44px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            font-size: 13px !important;
         }}
-        .step-row.active .step-num {{
-            border-color: #111111; color: #111111;
-            box-shadow: 0 0 0 4px #f3f4f6;
+        div.st-key-tab-am button[kind="primary"],
+        div.st-key-tab-pm button[kind="primary"],
+        div.st-key-tab-am button[data-testid="stBaseButton-primary"],
+        div.st-key-tab-pm button[data-testid="stBaseButton-primary"] {{
+            background: #ffffff !important;
+            color: #111111 !important;
+            border-bottom-color: #111111 !important;
         }}
-        .step-row.active .step-text {{ color: #111111; font-weight: 600; }}
-        .routine-complete-preview {{
-            margin: 10px 16px 14px;
-            min-height: 40px;
-            border-radius: 10px;
-            border: 1px solid #e5e7eb;
-            display: flex; align-items: center; justify-content: center;
-            color: #1f2937; font-size: 14px; font-weight: 700;
-            background: #ffffff;
+        /* Tighten the gap between tab row and steps */
+        div[data-testid="stHorizontalBlock"]:has(div.st-key-tab-am) {{
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 0;
         }}
-        .routine-complete-preview.is-done {{
-            background: #111111; border-color: #111111; color: #ffffff;
-        }}
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) {{
-            position: relative;
-        }}
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div[data-testid="stHorizontalBlock"]:has(div.st-key-tab-am) {{
-            position: absolute;
-            top: 10px; left: 0; right: 0;
-            height: 44px;
-            z-index: 5;
-            opacity: 0;
-        }}
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-am,
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-pm {{
-            position: absolute;
-            left: 16px; right: 16px; bottom: 14px;
-            z-index: 5;
-            opacity: 0;
-        }}
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-am button,
-        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-pm button {{
-            min-height: 40px !important;
+        /* Complete CTA */
+        div.st-key-complete-am button,
+        div.st-key-complete-pm button {{
+            min-height: 44px !important;
+            font-weight: 700 !important;
         }}
 
         /* ---------- Sidebar ---------- */
@@ -1066,7 +997,7 @@ def inject_styles() -> None:
             border-bottom: 2px solid transparent !important;
             border-radius: 0 !important;
             box-shadow: none !important;
-            min-height: 42px !important;
+            min-height: 44px !important;
             letter-spacing: 0.04em !important;
         }}
         div.st-key-tab-am button[data-testid="stBaseButton-primary"],
@@ -1077,22 +1008,81 @@ def inject_styles() -> None:
         }}
         div.stButton > button:hover {{ transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }}
 
+        /* ---------- Sticky today panel on desktop ---------- */
+        @media (min-width: 1024px) {{
+            div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {{
+                position: sticky;
+                top: 16px;
+                align-self: flex-start;
+                max-height: calc(100vh - 32px);
+                overflow-y: auto;
+            }}
+            div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2)::-webkit-scrollbar {{
+                width: 6px;
+            }}
+            div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2)::-webkit-scrollbar-thumb {{
+                background: #e5e7eb; border-radius: 999px;
+            }}
+        }}
+
         /* ---------- Reduced motion ---------- */
         @media (prefers-reduced-motion: reduce) {{
             * {{ transition: none !important; transform: none !important; }}
         }}
 
-        /* ---------- Mobile ---------- */
+        /* ---------- Mobile (≤ 720px) ---------- */
         @media (max-width: 720px) {{
+            .block-container {{
+                padding-top: 1rem !important;
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+                padding-bottom: 6rem !important;
+            }}
+            .app-title {{ font-size: 22px !important; }}
+            .app-subtitle {{ font-size: 13px !important; }}
+            .app-glyph {{ font-size: 22px !important; }}
+
+            /* Stack stats vertically on small screens */
+            div[data-testid="stHorizontalBlock"]:has(.metric) {{
+                flex-direction: column !important;
+                gap: 8px !important;
+            }}
+            div[data-testid="stHorizontalBlock"]:has(.metric) > div[data-testid="column"] {{
+                width: 100% !important; flex: 1 1 100% !important;
+            }}
+            .metric {{ padding: 12px 14px; }}
+            .metric .m-value {{ font-size: 24px; }}
+            .metric-visual {{ margin-top: 8px; }}
+            .metric-subcap {{ font-size: 11px; }}
+
+            /* Stack calendar above today panel — default flow already does
+               this since Streamlit columns become rows on mobile */
             div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor),
+            .day-card,
             div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton),
             div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton,
-            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button,
-            .day-card {{
-                height: 64px !important; font-size: 14px !important;
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button {{
+                min-height: 64px !important;
+                height: 64px !important;
+                font-size: 14px !important;
             }}
             .cal-spacer {{ height: 64px; }}
-            .cell-label {{ display: none; }}
+            .cell-label, .cell-shave {{ display: none; }}
+            .cell-num {{ font-size: 15px; }}
+
+            /* Hero & content */
+            .hero {{ padding: 18px; border-radius: 14px; }}
+            .hero .h-title {{ font-size: 24px; }}
+            .hero .h-meaning {{ font-size: 14px; }}
+            .step-row {{ padding: 14px 0; }}  /* bigger touch targets */
+            div.stButton > button {{ min-height: 44px !important; }}
+
+            /* Hide the desktop-only "How this works" expander on mobile to declutter */
+            div[data-testid="stExpander"] {{ display: none; }}
+
+            /* Legend table compresses gracefully */
+            .legend-item {{ grid-template-columns: 48px minmax(0, 1fr); padding: 10px 12px; }}
+            .legend-uses {{ font-size: 10px; }}
         }}
         </style>
         """
@@ -1345,43 +1335,51 @@ def render_today_panel(ls: LocalStorage) -> None:
     is_am = slot == "am"
     steps = r["am"] if is_am else r["pm"]
     slot_done = am_done if is_am else pm_done
-    with st.container():
-        st.markdown("<span class='routine-surface-anchor'></span>", unsafe_allow_html=True)
-        st.markdown(
-            build_routine_surface_html(
-                steps=steps,
-                active_slot=slot,
-                am_done=am_done,
-                pm_done=pm_done,
-                slot_done=slot_done,
-            ),
-            unsafe_allow_html=True,
-        )
 
-        tab_cols = st.columns(2, gap="small")
-        with tab_cols[0]:
-            if st.button("Morning", key="tab-am", use_container_width=True):
-                st.session_state.active_slot = "am"
-                st.rerun()
-        with tab_cols[1]:
-            if st.button("Night", key="tab-pm", use_container_width=True):
-                st.session_state.active_slot = "pm"
-                st.rerun()
+    st.markdown("<div class='routine-surface'>", unsafe_allow_html=True)
 
-        if slot_done:
-            btn_label = "✓ Morning done" if is_am else "✓ Night done"
-        else:
-            btn_label = "Mark morning complete" if is_am else "Mark night complete"
-        if st.button(btn_label, key=f"complete-{slot}", use_container_width=True):
-            slot_key = f"{k}-{slot}"
-            if slot_done:
-                st.session_state.done.pop(slot_key, None)
-                st.toast(f"{'Morning' if is_am else 'Night'} unchecked")
-            else:
-                st.session_state.done[slot_key] = True
-                st.toast(f"{'Morning' if is_am else 'Night'} logged ✓")
-            save_done(ls)
+    # Real tab buttons
+    tab_cols = st.columns(2, gap="small")
+    am_label = f"Morning{'  ✓' if am_done else ''}"
+    pm_label = f"Night{'  ✓' if pm_done else ''}"
+    with tab_cols[0]:
+        if st.button(am_label, key="tab-am", use_container_width=True,
+                     type="primary" if is_am else "secondary"):
+            st.session_state.active_slot = "am"
             st.rerun()
+    with tab_cols[1]:
+        if st.button(pm_label, key="tab-pm", use_container_width=True,
+                     type="primary" if not is_am else "secondary"):
+            st.session_state.active_slot = "pm"
+            st.rerun()
+
+    # Step list
+    st.markdown(
+        build_routine_surface_html(
+            steps=steps, active_slot=slot,
+            am_done=am_done, pm_done=pm_done, slot_done=slot_done,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    # Real CTA
+    if slot_done:
+        btn_label = "✓ Morning done" if is_am else "✓ Night done"
+    else:
+        btn_label = "Mark morning complete" if is_am else "Mark night complete"
+    if st.button(btn_label, key=f"complete-{slot}", use_container_width=True,
+                 type="primary" if slot_done else "secondary"):
+        slot_key = f"{k}-{slot}"
+        if slot_done:
+            st.session_state.done.pop(slot_key, None)
+            st.toast(f"{'Morning' if is_am else 'Night'} unchecked")
+        else:
+            st.session_state.done[slot_key] = True
+            st.toast(f"{'Morning' if is_am else 'Night'} logged ✓")
+        save_done(ls)
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_sidebar(ls: LocalStorage) -> None:
