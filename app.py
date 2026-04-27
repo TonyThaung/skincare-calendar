@@ -354,23 +354,24 @@ def inject_styles() -> None:
 
         /* ---------- Cards ---------- */
         .surface-tight {{
-            background: #ffffff; border-radius: 14px; padding: 14px 16px;
-            box-shadow: 0 1px 3px rgba(15,23,42,.04), 0 6px 18px rgba(15,23,42,.05);
+            background: #ffffff; border-radius: 12px; padding: 14px 16px;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
         }}
 
         /* ---------- Header ---------- */
         .app-header {{ display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }}
-        .app-glyph {{ font-size: 28px; color: #5b21b6; line-height: 1; }}
-        .app-title {{ font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; }}
+        .app-glyph {{ font-size: 28px; color: #111111; line-height: 1; }}
+        .app-title {{ font-size: 26px; font-weight: 800; color: #111111; line-height: 1.1; letter-spacing: -0.01em; }}
         .app-subtitle {{ color: #6b7280; font-size: 14px; font-weight: 500; margin-top: 2px; }}
 
         /* ---------- Metric cards ---------- */
-        .metric {{ background: #fff; border-radius: 14px; padding: 16px 18px;
-                   box-shadow: 0 1px 3px rgba(15,23,42,.04), 0 6px 18px rgba(15,23,42,.05); }}
+        .metric {{ background: #ffffff; border-radius: 12px; padding: 16px;
+                   box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04); }}
         .metric .m-label {{ font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
                             text-transform: uppercase; color: #6b7280; }}
-        .metric .m-value {{ font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px; line-height: 1.1; }}
-        .metric .m-cap {{ font-size: 12px; color: #94a3b8; margin-top: 2px; }}
+        .metric .m-value {{ font-size: 28px; font-weight: 800; color: #111111; margin-top: 4px;
+                            line-height: 1.1; font-variant-numeric: tabular-nums; }}
+        .metric .m-cap {{ font-size: 12px; color: #9ca3af; margin-top: 2px; }}
 
         /* ---------- Slim progress bar ---------- */
         .slim-track {{ height: 6px; background: #f3f4f6; border-radius: 999px; overflow: hidden; }}
@@ -395,15 +396,15 @@ def inject_styles() -> None:
         }}
         div[data-testid="stColumn"]:has(.cell-anchor) div.stButton > button:hover {{
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(15,23,42,.08);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }}
         div[data-testid="stColumn"]:has(.cell-anchor.is-today) div.stButton > button {{
-            outline: 2px solid #0f172a;
+            outline: 2px solid #111111;
             outline-offset: 2px;
         }}
         div[data-testid="stColumn"]:has(.cell-anchor.is-selected) div.stButton > button {{
             transform: scale(1.02);
-            box-shadow: 0 8px 22px rgba(15,23,42,.12);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.10);
         }}
         div[data-testid="stColumn"]:has(.cell-anchor.is-empty) div.stButton {{ visibility: hidden; }}
         div[data-testid="stColumn"]:has(.cell-anchor.is-disabled) div.stButton > button {{
@@ -422,7 +423,7 @@ def inject_styles() -> None:
             display: flex; flex-direction: column; justify-content: space-between;
         }}
         .cell-top {{ display: flex; justify-content: space-between; align-items: flex-start; }}
-        .cell-shave {{ font-size: 13px; color: #0f766e; font-weight: 700; }}
+        .cell-shave {{ font-size: 13px; color: #14532d; font-weight: 700; }}
         .cell-bot {{ display: flex; flex-direction: column; gap: 4px; }}
         .cell-label {{ font-size: 11px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.85; }}
         .cell-dots {{ display: flex; gap: 4px; }}
@@ -437,16 +438,16 @@ def inject_styles() -> None:
 
         /* ---------- Hero ---------- */
         .hero {{
-            border-radius: 18px; padding: 22px;
+            border-radius: 16px; padding: 22px;
             position: relative; overflow: hidden;
         }}
         .hero .h-meta {{ font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; font-weight: 700; }}
-        .hero .h-title {{ font-size: 30px; font-weight: 800; margin-top: 4px; line-height: 1.1; }}
+        .hero .h-title {{ font-size: 30px; font-weight: 800; margin-top: 4px; line-height: 1.1; letter-spacing: -0.01em; }}
         .hero .h-meaning {{ font-size: 15px; font-weight: 600; margin-top: 10px; line-height: 1.5; opacity: 0.9; }}
 
         /* ---------- Warning ---------- */
         .warn {{
-            background: #fef3c7; color: #854d0e; border-radius: 12px;
+            background: #fef7d6; color: #6b4f00; border-radius: 12px;
             padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;
             font-size: 13px; font-weight: 500; line-height: 1.5;
         }}
@@ -465,35 +466,69 @@ def inject_styles() -> None:
         }}
         .am-pm-tab.active {{ color: #111111; border-bottom: 2px solid #111111; }}
         .am-pm-tab .ok {{ color: #16a34a; margin-left: 6px; }}
+
+        /* ---------- Shave pill (Streamlit button styled as outline pill) ---------- */
+        .shave-pill-anchor {{ display: none; }}
+        div[data-testid="stVerticalBlock"]:has(> div > div > .shave-pill-anchor) + div div.stButton > button,
+        div.stButton:has(+ * .shave-pill-anchor) > button {{
+            /* fallback selector — we apply via the anchor sibling pattern below */
+        }}
+        /* Real styling: target stButton that immediately follows our anchor span. */
+        .shave-pill-anchor.shave-pill-idle + div div.stButton > button,
+        div:has(> .shave-pill-anchor.shave-pill-idle) ~ div div.stButton > button:first-of-type {{
+            background: transparent !important;
+            color: #14532d !important;
+            border: 1.5px solid #14532d !important;
+            border-radius: 999px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            padding: 6px 14px !important;
+            min-height: auto !important;
+            box-shadow: none !important;
+        }}
+        .shave-pill-anchor.shave-pill-active + div div.stButton > button,
+        div:has(> .shave-pill-anchor.shave-pill-active) ~ div div.stButton > button:first-of-type {{
+            background: #14532d !important;
+            color: #ffffff !important;
+            border: 1.5px solid #14532d !important;
+            border-radius: 999px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            padding: 6px 14px !important;
+            min-height: auto !important;
+            box-shadow: none !important;
+        }}
         .step-row {{
             display: flex; align-items: flex-start; gap: 12px;
-            padding: 10px 0; border-bottom: 1px solid #f1f5f9;
+            padding: 10px 0; border-bottom: 1px solid #e5e7eb;
             font-size: 14px; color: #1f2937;
         }}
         .step-row:last-child {{ border-bottom: none; }}
         .step-num {{
-            width: 22px; height: 22px; border-radius: 50%; background: #f1f5f9;
-            color: #475569; font-size: 12px; font-weight: 700;
+            width: 22px; height: 22px; border-radius: 50%; background: #f3f4f6;
+            color: #4b5563; font-size: 12px; font-weight: 700;
             display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
         }}
 
         /* ---------- Sidebar ---------- */
-        [data-testid="stSidebar"] {{ background: #ffffff !important; border-right: 1px solid #f1f5f9; }}
+        [data-testid="stSidebar"] {{ background: #ffffff !important; border-right: 1px solid #e5e7eb; }}
         [data-testid="stSidebar"] .block-container {{ padding-top: 1.5rem; }}
         .legend-row {{ display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }}
         .legend-dot {{ width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }}
-        .legend-name {{ font-weight: 600; color: #0f172a; flex: 1; }}
-        .legend-when {{ color: #94a3b8; font-size: 12px; }}
+        .legend-name {{ font-weight: 600; color: #111111; flex: 1; }}
+        .legend-when {{ color: #9ca3af; font-size: 12px; }}
         .product-row {{
             font-size: 13px; padding: 6px 0; color: #1f2937;
-            border-bottom: 1px solid #f1f5f9;
+            border-bottom: 1px solid #e5e7eb;
         }}
         .product-row:last-child {{ border-bottom: none; }}
         .tip-card {{
-            background: #f8fafc; border-radius: 10px; padding: 10px 12px;
-            font-size: 12px; color: #334155; line-height: 1.5; margin-bottom: 8px;
+            background: #f9fafb; border-radius: 10px; padding: 10px 12px;
+            font-size: 12px; color: #4b5563; line-height: 1.5; margin-bottom: 8px;
         }}
-        .tip-card strong {{ color: #0f172a; }}
+        .tip-card strong {{ color: #111111; }}
 
         /* ---------- Buttons ---------- */
         div.stButton > button {{
@@ -502,7 +537,7 @@ def inject_styles() -> None:
             border-radius: 10px !important;
             transition: all 160ms ease;
         }}
-        div.stButton > button:hover {{ transform: translateY(-1px); box-shadow: 0 4px 12px rgba(15,23,42,.08); }}
+        div.stButton > button:hover {{ transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }}
 
         /* ---------- Reduced motion ---------- */
         @media (prefers-reduced-motion: reduce) {{
@@ -719,29 +754,26 @@ def render_today_panel(ls: LocalStorage) -> None:
     tint, ink, _accent = PILL_COLORS[r["color"]]
     _teal_tint, teal_ink, _teal_accent = PILL_COLORS["teal"]
 
-    shave_pill_bg = teal_ink if shaving else "transparent"
-    shave_pill_color = "#ffffff" if shaving else teal_ink
+    # Hero — meta, title, meaning. Shave toggle rendered below as a Streamlit
+    # button styled to match the spec's outline pill.
     st.markdown(
         f"""
         <div class="hero" style="background:{tint};color:{ink};">
             <div class="h-meta">{DAY_NAMES_SHORT[selected.weekday()]} · {MONTH_NAMES[selected.month - 1][:3].upper()} {selected.day}</div>
             <div class="h-title">{r['label']} Day</div>
             <div class="h-meaning">{r['simple_meaning']}</div>
-            <div style="margin-top:14px;">
-                <span style="
-                    display:inline-block; padding:6px 12px; border-radius:999px;
-                    background:{shave_pill_bg}; color:{shave_pill_color};
-                    border:1.5px solid {teal_ink}; font-size:12px; font-weight:700;
-                    letter-spacing:0.04em;">
-                    ✂ {'Shaving day' if shaving else 'Mark shaving day'}
-                </span>
-            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    # Anchor the next stButton so we can style it as the outline shave pill.
+    pill_class = "shave-pill-active" if shaving else "shave-pill-idle"
+    st.markdown(
+        f"<span class='shave-pill-anchor {pill_class}'></span>",
+        unsafe_allow_html=True,
+    )
     if st.button(
-        "Unmark shaving day" if shaving else "Mark as shaving day",
+        "✂  Shaving day" if shaving else "✂  Mark shaving day",
         key="shave-toggle",
         use_container_width=True,
     ):
