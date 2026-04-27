@@ -317,8 +317,7 @@ def inject_styles() -> None:
         )
     color_rules = "\n".join(css_rules)
 
-    st.markdown(
-        f"""
+    style_block = f"""
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
         /* ---------- Reset Streamlit chrome ---------- */
@@ -493,9 +492,12 @@ def inject_styles() -> None:
             .cell-label {{ display: none; }}
         }}
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    try:
+        st.html(style_block)
+    except AttributeError:
+        # Older Streamlit fallback
+        st.markdown(style_block, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
