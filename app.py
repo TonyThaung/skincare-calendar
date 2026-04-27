@@ -246,11 +246,16 @@ def render_calendar(month: int) -> None:
                 bg, _fg = PILL_COLORS[r["color"]]
                 am_done = st.session_state.done.get(f"{k}-am")
                 pm_done = st.session_state.done.get(f"{k}-pm")
-                marks = ("✓" if am_done else "·") + ("✓" if pm_done else "·")
+                marks = ("☀️" if am_done else "⛅") + ("🌙" if pm_done else "☁️")
                 shave_mark = " 🪒" if shaving else ""
-                sel_mark = "🔵 " if is_sel else ""
+                sel_mark = "📍 " if is_sel else ""
 
-                btn_label = f"{sel_mark}{d.day}{shave_mark}\n{r['label']}\nAM/PM {marks}"
+                # Make label more uniform length
+                short_label = r['label']
+                if len(short_label) > 10:
+                    short_label = short_label[:8] + ".."
+                
+                btn_label = f"{sel_mark}{d.day}{shave_mark}\n{short_label}\n{marks}"
 
                 if st.button(
                     btn_label,
@@ -338,6 +343,25 @@ def render_today_panel(ls: LocalStorage) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Simple Skincare Calendar", layout="wide")
+
+    # Custom CSS for uniform calendar buttons
+    st.markdown(
+        """
+        <style>
+        div.stButton > button:first-child {
+            height: 5em;
+            padding: 0;
+            margin: 0;
+        }
+        div.stButton > button > div > p {
+            font-size: 0.85rem;
+            line-height: +1.2;
+            text-align: center;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     ls = LocalStorage()
 
