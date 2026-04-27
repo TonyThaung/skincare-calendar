@@ -10,6 +10,7 @@ Run locally:
 from __future__ import annotations
 
 import calendar
+import html
 import json
 from datetime import date, timedelta
 
@@ -50,13 +51,12 @@ PILL_COLORS = {
 }
 
 ROUTINE_LEGEND = [
-    ("purple", "Retinal", "Mon · Fri"),
-    ("blue", "Optional Toner", "Tue"),
-    ("green", "Azelaic Acid", "Wed"),
-    ("pink", "Anua", "Thu"),
-    ("grey", "Recovery", "Sat"),
-    ("orange", "Choose One", "Sun"),
-    ("teal", "Shaving", "Any marked day"),
+    ("purple", "Retinal", "MON · FRI", "Anti-ageing & glow", "Medik8 Retinal 6"),
+    ("blue", "Optional Toner", "TUE", "Gentle exfoliation", "SKIN1004 Toner"),
+    ("green", "Azelaic Acid", "WED", "Acne & redness", "Cos De BAHA 10%"),
+    ("pink", "Anua", "THU", "Pigmentation & tone", "Niacinamide + TXA"),
+    ("grey", "Recovery", "SAT", "Barrier repair", "No actives"),
+    ("orange", "Choose One", "SUN", "Pick what skin needs", "Anua or azelaic"),
 ]
 
 PRODUCTS = [
@@ -298,6 +298,209 @@ def compute_week_progress(done: dict, ref: date) -> tuple[int, int]:
     return completed, total
 
 
+def _day_completion_count(done: dict, d: date) -> int:
+    k = date_key(d)
+    return int(bool(done.get(f"{k}-am"))) + int(bool(done.get(f"{k}-pm")))
+
+
+def _status_class(done: dict, d: date) -> str:
+    count = _day_completion_count(done, d)
+    if count == 2:
+        return "is-done"
+    if count == 1:
+        return "is-partial"
+    return "is-empty"
+
+
+def build_stats_visuals(done: dict, ref: date) -> dict[str, str]:
+    """Return small deck-style visual fragments for the stats strip."""
+    recent_days = [ref - timedelta(days=offset) for offset in range(6, -1, -1)]
+    dots = []
+    for d in recent_days:
+        classes = ["stat-dot"]
+        if not (START_DATE <= d <= END_DATE):
+            classes.append("is-disabled")
+        else:
+            classes.append(_status_class(done, d))
+        if d == ref:
+            classes.append("is-ref")
+        dots.append(f"<span class='{' '.join(classes)}'></span>")
+
+    monday = ref - timedelta(days=ref.weekday())
+    week_chips = []
+    for offset, label in enumerate(["M", "T", "W", "T", "F", "S", "S"]):
+        d = monday + timedelta(days=offset)
+        classes = ["week-chip"]
+        if not (START_DATE <= d <= END_DATE):
+            classes.append("is-disabled")
+        else:
+            classes.append(_status_class(done, d))
+        if d == ref:
+            classes.append("is-ref")
+        week_chips.append(f"<span class='{' '.join(classes)}'>{label}</span>")
+
+    pct, completed, total = compute_progress(done)
+    return {
+        "streak_dots": "<div class='stat-dots'>" + "".join(dots) + "</div>",
+        "week_chips": "<div class='week-chips'>" + "".join(week_chips) + "</div>",
+        "overall_bar": (
+            "<div class='metric-bar-track'>"
+            f"<div class='metric-bar-fill' style='width:{pct}%'></div>"
+            "</div>"
+        ),
+        "overall_caption": f"{pct}% · {completed} of {total} routines done",
+    }
+
+
+def build_warning_html(warning: str) -> str:
+    safe_warning = html.escape(warning)
+    return f"""
+        <div class="warn warn-rail">
+            <span class="warn-glyph">!</span>
+            <div>
+                <div class="warn-label">Avoid tonight</div>
+                <div class="warn-text">{safe_warning}</div>
+            </div>
+        </div>
+    """
+
+
+def build_tip_card_html(title: str, body: str) -> str:
+    safe_title = html.escape(title)
+    safe_body = html.escape(body)
+    return f"""
+        <div class="tip-card tip-rail">
+            <span class="tip-glyph">i</span>
+            <div><strong>{safe_title}.</strong> {safe_body}</div>
+        </div>
+    """
+
+
+def build_legend_html(items: list[tuple[str, str, str, str, str]]) -> str:
+    rows = []
+    for color, name, when, purpose, uses in items:
+        _tint, _ink, accent = PILL_COLORS[color]
+        rows.append(
+            "<div class='legend-item'>"
+            f"<span class='legend-day'>{html.escape(when)}</span>"
+            "<div class='legend-name-wrap'>"
+            f"<span class='legend-pip' style='background:{accent};'></span>"
+            "<div class='legend-name-text'>"
+            f"<div class='legend-name'>{html.escape(name)}</div>"
+            f"<div class='legend-purpose'>{html.escape(purpose)}</div>"
+            "</div>"
+            "</div>"
+            f"<span class='legend-uses'>{html.escape(uses)}</span>"
+            "</div>"
+        )
+
+    return (
+        "<div class='legend-card'>"
+        + "".join(rows)
+        + "<div class='legend-footer'>"
+        + "<span class='shave-tag'>✂ Shaving</span>"
+        + "<span>Any day you mark — overrides actives with a calming routine.</span>"
+        + "</div></div>"
+    )
+
+
+def build_day_card_html(
+    d: date,
+    label: str,
+    color: str,
+    is_selected: bool,
+    is_today: bool,
+    am_done: bool = False,
+    pm_done: bool = False,
+    shaving: bool = False,
+    disabled: bool = False,
+) -> str:
+    if disabled:
+        bg, fg, border = "#fafafa", "#9ca3af", "#e5e7eb"
+    else:
+        tint, ink, accent = PILL_COLORS[color]
+        bg, fg, border = ("#111111", "#ffffff", "#111111") if is_selected else (tint, ink, f"{accent}55")
+
+    classes = ["day-card"]
+    if disabled:
+        classes.append("is-disabled")
+    if is_selected:
+        classes.append("is-selected")
+    if is_today:
+        classes.append("is-today")
+
+    am_cls = "cell-dot filled" if am_done else "cell-dot"
+    pm_cls = "cell-dot filled" if pm_done else "cell-dot"
+    shave_html = "<div class='cell-shave'>✂</div>" if shaving else "<div></div>"
+    label_html = "" if disabled else f"<div class='cell-label'>{html.escape(label)}</div>"
+    dots_html = "" if disabled else f"""
+        <div class='cell-dots'>
+            <span class='{am_cls}'></span>
+            <span class='{pm_cls}'></span>
+        </div>
+    """
+
+    return f"""
+        <div class="{' '.join(classes)}" style="background:{bg};color:{fg};border-color:{border};">
+            <div class="cell-top"><div class="cell-num">{d.day}</div>{shave_html}</div>
+            <div class="cell-bot">{label_html}{dots_html}</div>
+        </div>
+    """
+
+
+def initial_calendar_state() -> tuple[date, int]:
+    selected = get_today()
+    return selected, selected.month
+
+
+def build_routine_surface_html(
+    steps: list[str],
+    active_slot: str,
+    am_done: bool,
+    pm_done: bool,
+    slot_done: bool,
+) -> str:
+    is_am = active_slot == "am"
+    tab_html = []
+    for slot, label, is_done in (("am", "Morning", am_done), ("pm", "Night", pm_done)):
+        classes = ["routine-tab"]
+        if slot == active_slot:
+            classes.append("is-active")
+        check = "<span class='tab-check'>✓</span>" if is_done else ""
+        tab_html.append(f"<div class='{' '.join(classes)}'>{label}{check}</div>")
+
+    step_rows = []
+    for i, step in enumerate(steps, 1):
+        classes = ["step-row"]
+        if slot_done:
+            classes.append("done")
+        elif i == 1:
+            classes.append("active")
+        step_rows.append(
+            f"<div class='{' '.join(classes)}'>"
+            f"<span class='step-num'><span>{i}</span></span>"
+            "<div>"
+            f"<div class='step-text'>{html.escape(step)}</div>"
+            "</div>"
+            "</div>"
+        )
+    steps_html = "".join(step_rows)
+    done_class = " is-done" if slot_done else ""
+    cta_label = (
+        "✓ Morning done" if is_am and slot_done else
+        "✓ Night done" if slot_done else
+        "Mark morning complete" if is_am else
+        "Mark night complete"
+    )
+
+    return f"""
+        <div class="routine-surface">
+            <div class="routine-tabs">{''.join(tab_html)}</div>
+            <div class="routine-steps surface-tight">{steps_html}</div>
+            <div class="routine-complete-preview{done_class}">{cta_label}</div>
+        </div>
+    """
+
 # ---------------------------------------------------------------------------
 # Global styles
 # ---------------------------------------------------------------------------
@@ -306,20 +509,20 @@ def inject_styles() -> None:
     for name, (tint, ink, accent) in PILL_COLORS.items():
         css_rules.append(
             f"""
-            div[data-testid="stColumn"]:has(.cell-anchor.is-{name}) div.stButton > button {{
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor.is-{name}) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button {{
                 background: {tint};
                 color: {ink};
                 border: 1px solid {accent}55;
             }}
-            div[data-testid="stColumn"]:has(.cell-anchor.is-{name}) div.stButton > button:hover {{
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor.is-{name}) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button:hover {{
                 background: {tint};
                 border-color: {accent};
                 color: {ink};
             }}
-            div[data-testid="stColumn"]:has(.cell-anchor.is-{name}.is-selected) div.stButton > button {{
-                background: {ink};
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor.is-{name}.is-selected) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button {{
+                background: #111111;
                 color: #ffffff;
-                border-color: {ink};
+                border-color: #111111;
             }}
             """
         )
@@ -328,6 +531,27 @@ def inject_styles() -> None:
     style_block = f"""
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
+        :root {{
+            --ink: #111111;
+            --ink-2: #1f2937;
+            --ink-3: #4b5563;
+            --muted: #6b7280;
+            --faint: #9ca3af;
+            --hairline: #e5e7eb;
+            --bg-track: #f3f4f6;
+            --bg-subtle: #f9fafb;
+            --green: #16a34a;
+            --green-tint: #d4f4dd;
+            --green-ink: #14532d;
+            --blue: #2563eb;
+            --blue-tint: #dbe7ff;
+            --red: #dc2626;
+            --red-tint: #fde0e0;
+            --shadow-card: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-hover: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-pop: 0 8px 24px rgba(0,0,0,0.10);
+        }}
+
         /* ---------- Reset Streamlit chrome ---------- */
         #MainMenu, footer, header[data-testid="stHeader"] {{ visibility: hidden; height: 0; }}
         .stDeployButton, [data-testid="stToolbar"] {{ display: none !important; }}
@@ -346,7 +570,7 @@ def inject_styles() -> None:
         }}
 
         /* ---------- Typography ---------- */
-        h1, h2, h3, h4 {{ font-family: 'Inter', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }}
+        h1, h2, h3, h4 {{ font-family: 'Inter', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.01em; }}
         .label-tiny {{
             font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
             text-transform: uppercase; color: #6b7280;
@@ -366,12 +590,47 @@ def inject_styles() -> None:
 
         /* ---------- Metric cards ---------- */
         .metric {{ background: #ffffff; border-radius: 12px; padding: 16px;
+                   border: 1px solid #e5e7eb;
                    box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04); }}
-        .metric .m-label {{ font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+        .metric-head {{ display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }}
+        .metric .m-label {{ font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
                             text-transform: uppercase; color: #6b7280; }}
-        .metric .m-value {{ font-size: 28px; font-weight: 800; color: #111111; margin-top: 4px;
+        .metric .m-value {{ font-size: 32px; font-weight: 800; color: #111111; margin-top: 4px;
                             line-height: 1.1; font-variant-numeric: tabular-nums; }}
         .metric .m-cap {{ font-size: 12px; color: #9ca3af; margin-top: 2px; }}
+        .metric .m-kicker {{ font-size: 12px; color: #9ca3af; white-space: nowrap; }}
+        .metric-visual {{ margin-top: 12px; min-height: 24px; display: flex; align-items: center; }}
+        .metric-subcap {{ font-size: 12px; color: #6b7280; margin-top: 8px; line-height: 1.4; }}
+        .metric-subcap b {{ color: #111111; }}
+        .stat-dots {{ display: flex; gap: 6px; align-items: center; }}
+        .stat-dot {{
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #f3f4f6; border: 1px solid #e5e7eb;
+            display: inline-block; flex: 0 0 auto;
+        }}
+        .stat-dot.is-done {{ background: #16a34a; border-color: #16a34a; }}
+        .stat-dot.is-partial {{
+            background: linear-gradient(90deg, #16a34a 50%, #f3f4f6 50%);
+            border-color: #16a34a;
+        }}
+        .stat-dot.is-ref {{ outline: 2px solid #111111; outline-offset: 2px; }}
+        .stat-dot.is-disabled {{ opacity: 0.35; }}
+        .week-chips {{ display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; width: 100%; }}
+        .week-chip {{
+            min-width: 0; height: 26px; border-radius: 8px;
+            background: #f3f4f6; color: #9ca3af;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700;
+        }}
+        .week-chip.is-done {{ background: #111111; color: #ffffff; }}
+        .week-chip.is-partial {{
+            background: #d4f4dd; color: #14532d;
+            box-shadow: inset 0 0 0 1px rgba(22,163,74,0.25);
+        }}
+        .week-chip.is-ref {{ outline: 2px solid #111111; outline-offset: 2px; }}
+        .week-chip.is-disabled {{ opacity: 0.35; }}
+        .metric-bar-track {{ height: 10px; background: #f3f4f6; border-radius: 999px; overflow: hidden; width: 100%; }}
+        .metric-bar-fill {{ height: 100%; background: #111111; border-radius: 999px; }}
 
         /* ---------- Slim progress bar ---------- */
         .slim-track {{ height: 6px; background: #f3f4f6; border-radius: 999px; overflow: hidden; }}
@@ -380,8 +639,27 @@ def inject_styles() -> None:
         /* ---------- Calendar grid ---------- */
         .cell-anchor {{ display: none; }}
 
-        div[data-testid="stColumn"]:has(.cell-anchor) div.stButton > button {{
-            height: 88px !important;
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) {{
+            position: relative;
+            min-height: 96px;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(.day-card) {{
+            position: relative;
+            z-index: 1;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) {{
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            height: 96px;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton,
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button {{
+            height: 96px !important;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button {{
+            opacity: 0 !important;
+            height: 96px !important;
             padding: 10px 12px !important;
             border-radius: 12px !important;
             font-family: 'Inter', sans-serif !important;
@@ -394,29 +672,38 @@ def inject_styles() -> None:
             transition: transform 120ms ease, box-shadow 120ms ease, background 160ms ease;
             position: relative;
         }}
-        div[data-testid="stColumn"]:has(.cell-anchor) div.stButton > button:hover {{
+        .day-card {{
+            height: 96px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 120ms ease, box-shadow 120ms ease, background 160ms ease;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor):hover .day-card:not(.is-disabled):not(.is-selected) {{
             transform: translateY(-2px);
             box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }}
-        div[data-testid="stColumn"]:has(.cell-anchor.is-today) div.stButton > button {{
+        .day-card.is-today {{
             outline: 2px solid #111111;
             outline-offset: 2px;
         }}
-        div[data-testid="stColumn"]:has(.cell-anchor.is-selected) div.stButton > button {{
+        .day-card.is-selected {{
             transform: scale(1.02);
             box-shadow: 0 8px 24px rgba(0,0,0,0.10);
         }}
-        div[data-testid="stColumn"]:has(.cell-anchor.is-empty) div.stButton {{ visibility: hidden; }}
-        div[data-testid="stColumn"]:has(.cell-anchor.is-disabled) div.stButton > button {{
-            background: #fafafa !important;
-            color: #9ca3af !important;
-            border: 1px dashed #e5e7eb !important;
+        .day-card.is-disabled {{
+            border-style: dashed;
             box-shadow: none !important;
             cursor: not-allowed !important;
             transform: none !important;
         }}
 
         .cell-wrap {{ position: relative; }}
+        .cal-spacer {{ height: 96px; }}
         .cell-overlay {{
             position: absolute; inset: 0; pointer-events: none;
             padding: 10px 12px;
@@ -433,8 +720,8 @@ def inject_styles() -> None:
         {color_rules}
 
         /* When selected, force overlay text to white */
-        div[data-testid="stColumn"]:has(.cell-anchor.is-selected) .cell-overlay {{ color: #ffffff !important; }}
-        div[data-testid="stColumn"]:has(.cell-anchor.is-selected) .cell-shave {{ color: #ffffff !important; }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor.is-selected) .cell-overlay {{ color: #ffffff !important; }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor.is-selected) .cell-shave {{ color: #ffffff !important; }}
 
         /* ---------- Hero ---------- */
         .hero {{
@@ -447,11 +734,30 @@ def inject_styles() -> None:
 
         /* ---------- Warning ---------- */
         .warn {{
-            background: #fef7d6; color: #6b4f00; border-radius: 12px;
-            padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;
+            background: #ffffff; color: #111111; border-radius: 12px;
+            padding: 14px 16px; display: grid;
+            grid-template-columns: 32px 1fr; gap: 14px; align-items: flex-start;
             font-size: 13px; font-weight: 500; line-height: 1.5;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+            position: relative; overflow: hidden;
         }}
-        .warn .warn-icon {{ font-weight: 800; font-size: 16px; }}
+        .warn::before {{
+            content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 3px; background: #dc2626;
+        }}
+        .warn-glyph {{
+            width: 32px; height: 32px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #fde0e0; color: #dc2626;
+            border: 1px solid rgba(220,38,38,0.2);
+            font-size: 16px; font-weight: 800;
+        }}
+        .warn-label {{
+            font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #dc2626; margin-bottom: 2px;
+        }}
+        .warn-text {{ color: #111111; }}
 
         /* ---------- Section labels & step rows ---------- */
         .section-label {{
@@ -500,35 +806,241 @@ def inject_styles() -> None:
             min-height: auto !important;
             box-shadow: none !important;
         }}
+        div.st-key-shave-toggle button {{
+            background: transparent !important;
+            color: #14532d !important;
+            border: 1.5px solid #14532d !important;
+            border-radius: 999px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            min-height: 40px !important;
+            box-shadow: none !important;
+        }}
+        [data-testid="stAppViewContainer"]:has(.shave-pill-anchor.shave-pill-active) div.st-key-shave-toggle button {{
+            background: #14532d !important;
+            color: #ffffff !important;
+        }}
+        .routine-surface {{
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+            overflow: hidden;
+            margin-top: 10px;
+        }}
+        .routine-tabs {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            border-bottom: 1px solid #e5e7eb;
+        }}
+        .routine-tab {{
+            min-height: 44px;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            color: #6b7280; font-size: 13px; font-weight: 700;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+        }}
+        .routine-tab.is-active {{ color: #111111; border-bottom-color: #111111; }}
+        .routine-tab .tab-check {{ color: #16a34a; font-size: 14px; }}
+        .routine-steps.surface-tight {{
+            background: #ffffff;
+            border-radius: 0;
+            padding: 6px 16px;
+            box-shadow: none;
+            position: relative;
+        }}
+        .routine-steps.surface-tight::before {{
+            content: "";
+            position: absolute;
+            left: 27px;
+            top: 22px;
+            bottom: 22px;
+            width: 2px;
+            background: linear-gradient(180deg, #2563eb, #f3f4f6);
+            border-radius: 2px;
+        }}
         .step-row {{
-            display: flex; align-items: flex-start; gap: 12px;
-            padding: 10px 0; border-bottom: 1px solid #e5e7eb;
-            font-size: 14px; color: #1f2937;
+            display: flex; align-items: flex-start; gap: 14px;
+            padding: 12px 0; border-bottom: 1px solid #e5e7eb;
+            font-size: 14px; color: #1f2937; line-height: 1.5;
+            position: relative; transition: background 160ms ease;
         }}
         .step-row:last-child {{ border-bottom: none; }}
         .step-num {{
-            width: 22px; height: 22px; border-radius: 50%; background: #f3f4f6;
-            color: #4b5563; font-size: 12px; font-weight: 700;
-            display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: #ffffff; color: #6b7280;
+            font-size: 12px; font-weight: 700;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 auto;
+            border: 2px solid #e5e7eb;
+            position: relative; z-index: 1;
+            transition: all 160ms ease;
+        }}
+        .step-row.done .step-num {{
+            background: #111111; border-color: #111111; color: #ffffff;
+        }}
+        .step-row.done .step-num::before {{ content: "✓"; font-size: 12px; }}
+        .step-row.done .step-num span {{ display: none; }}
+        .step-row.done .step-text {{
+            color: #9ca3af;
+            text-decoration: line-through;
+            text-decoration-color: #9ca3af;
+            text-decoration-thickness: 1px;
+        }}
+        .step-row.active {{
+            background: linear-gradient(90deg, #dbe7ff 0%, transparent 60%);
+            border-radius: 8px;
+            margin: 0 -8px;
+            padding: 12px 8px;
+        }}
+        .step-row.active .step-num {{
+            border-color: #111111; color: #111111;
+            box-shadow: 0 0 0 4px #f3f4f6;
+        }}
+        .step-row.active .step-text {{ color: #111111; font-weight: 600; }}
+        .routine-complete-preview {{
+            margin: 10px 16px 14px;
+            min-height: 40px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            display: flex; align-items: center; justify-content: center;
+            color: #1f2937; font-size: 14px; font-weight: 700;
+            background: #ffffff;
+        }}
+        .routine-complete-preview.is-done {{
+            background: #111111; border-color: #111111; color: #ffffff;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) {{
+            position: relative;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div[data-testid="stHorizontalBlock"]:has(div.st-key-tab-am) {{
+            position: absolute;
+            top: 10px; left: 0; right: 0;
+            height: 44px;
+            z-index: 5;
+            opacity: 0;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-am,
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-pm {{
+            position: absolute;
+            left: 16px; right: 16px; bottom: 14px;
+            z-index: 5;
+            opacity: 0;
+        }}
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-am button,
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .routine-surface-anchor) div.st-key-complete-pm button {{
+            min-height: 40px !important;
         }}
 
         /* ---------- Sidebar ---------- */
         [data-testid="stSidebar"] {{ background: #ffffff !important; border-right: 1px solid #e5e7eb; }}
         [data-testid="stSidebar"] .block-container {{ padding-top: 1.5rem; }}
-        .legend-row {{ display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }}
-        .legend-dot {{ width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }}
-        .legend-name {{ font-weight: 600; color: #111111; flex: 1; }}
-        .legend-when {{ color: #9ca3af; font-size: 12px; }}
+        .legend-card {{
+            background: #ffffff;
+            border-radius: 14px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+            overflow: hidden;
+            margin-top: 8px;
+        }}
+        .legend-item {{
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr);
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            border-bottom: 1px solid #e5e7eb;
+            transition: background 160ms ease;
+        }}
+        .legend-item:hover {{ background: #f9fafb; }}
+        .legend-day {{
+            font-family: ui-monospace, Menlo, monospace;
+            font-size: 10px; font-weight: 700;
+            letter-spacing: 0.08em; color: #6b7280;
+        }}
+        .legend-name-wrap {{
+            display: flex; align-items: center; gap: 10px; min-width: 0;
+        }}
+        .legend-pip {{
+            width: 8px; height: 32px; border-radius: 999px; flex: 0 0 auto;
+        }}
+        .legend-name-text {{ min-width: 0; }}
+        .legend-name {{
+            font-size: 13px; font-weight: 700; color: #111111;
+            line-height: 1.2;
+        }}
+        .legend-purpose {{
+            font-size: 11px; color: #6b7280;
+            margin-top: 3px; line-height: 1.3;
+        }}
+        .legend-uses {{
+            grid-column: 2;
+            font-size: 11px; color: #6b7280;
+            line-height: 1.35;
+        }}
+        .legend-footer {{
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 14px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            font-size: 12px; color: #6b7280;
+            line-height: 1.4;
+        }}
+        .shave-tag {{
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 9px; border-radius: 999px;
+            background: #d4f4dd; color: #14532d;
+            font-weight: 700; font-size: 10px;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            white-space: nowrap;
+        }}
         .product-row {{
             font-size: 13px; padding: 6px 0; color: #1f2937;
             border-bottom: 1px solid #e5e7eb;
         }}
         .product-row:last-child {{ border-bottom: none; }}
         .tip-card {{
-            background: #f9fafb; border-radius: 10px; padding: 10px 12px;
+            background: #ffffff; border-radius: 12px; padding: 14px 16px;
             font-size: 12px; color: #4b5563; line-height: 1.5; margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+            display: grid; grid-template-columns: 32px 1fr; gap: 14px;
+            position: relative; overflow: hidden;
+        }}
+        .tip-card::before {{
+            content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 3px; background: #2563eb;
         }}
         .tip-card strong {{ color: #111111; }}
+        .tip-glyph {{
+            width: 32px; height: 32px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: #dbe7ff; color: #2563eb;
+            border: 1px solid rgba(37,99,235,0.2);
+            font-size: 14px; font-weight: 800; font-style: normal;
+        }}
+        .tip-dot-shell {{ display: none; }}
+        div.st-key-tip-dot-0, div.st-key-tip-dot-1, div.st-key-tip-dot-2 {{
+            display: flex !important;
+            justify-content: flex-end;
+        }}
+        div.st-key-tip-dot-0 button,
+        div.st-key-tip-dot-1 button,
+        div.st-key-tip-dot-2 button {{
+            min-height: 18px !important;
+            width: 18px !important;
+            height: 18px !important;
+            padding: 0 !important;
+            border-radius: 999px !important;
+            box-shadow: none !important;
+            font-size: 11px !important;
+            line-height: 1 !important;
+            color: #111111 !important;
+            background: #ffffff !important;
+            border: 1px solid #e5e7eb !important;
+        }}
 
         /* ---------- Buttons ---------- */
         div.stButton > button {{
@@ -536,6 +1048,32 @@ def inject_styles() -> None:
             font-weight: 600 !important;
             border-radius: 10px !important;
             transition: all 160ms ease;
+        }}
+        div.stButton > button[data-testid="stBaseButton-primary"] {{
+            background: #111111 !important;
+            color: #ffffff !important;
+            border-color: #111111 !important;
+        }}
+        div.st-key-reset-confirm button[data-testid="stBaseButton-primary"] {{
+            background: #dc2626 !important;
+            border-color: #dc2626 !important;
+        }}
+        div.st-key-tab-am button,
+        div.st-key-tab-pm button {{
+            background: #ffffff !important;
+            color: #6b7280 !important;
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            min-height: 42px !important;
+            letter-spacing: 0.04em !important;
+        }}
+        div.st-key-tab-am button[data-testid="stBaseButton-primary"],
+        div.st-key-tab-pm button[data-testid="stBaseButton-primary"] {{
+            background: #ffffff !important;
+            color: #111111 !important;
+            border-bottom-color: #111111 !important;
         }}
         div.stButton > button:hover {{ transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }}
 
@@ -546,9 +1084,14 @@ def inject_styles() -> None:
 
         /* ---------- Mobile ---------- */
         @media (max-width: 720px) {{
-            div[data-testid="stColumn"]:has(.cell-anchor) div.stButton > button {{
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor),
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton),
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton,
+            div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .cell-anchor) > div[data-testid="stElementContainer"]:has(div.stButton) div.stButton > button,
+            .day-card {{
                 height: 64px !important; font-size: 14px !important;
             }}
+            .cal-spacer {{ height: 64px; }}
             .cell-label {{ display: none; }}
         }}
         </style>
@@ -600,35 +1143,39 @@ def render_stats_strip(done: dict) -> None:
     week_done, week_total = compute_week_progress(done, today)
     pct, _completed, total = compute_progress(done)
     days_total = total // 2
+    visuals = build_stats_visuals(done, today)
 
     cols = st.columns(3)
     cards = [
-        ("Streak", f"{streak} {'day' if streak == 1 else 'days'}", "consecutive AM + PM"),
+        (
+            "Streak",
+            f"{streak} {'day' if streak == 1 else 'days'}",
+            "last 7 days",
+            visuals["streak_dots"],
+            f"<b>{streak}</b> {'day' if streak == 1 else 'days'} in a row · AM + PM",
+        ),
         ("This week", f"{week_done} / {week_total}" if week_total else "—",
-         "morning + night this week"),
-        ("Overall", f"{pct}%", f"{days_total} days total"),
+         "Mon → Sun", visuals["week_chips"],
+         f"<b>{week_done}</b> of {week_total} routines logged" if week_total else "No routines this week"),
+        ("Overall", f"{pct}%", f"{days_total} days total", visuals["overall_bar"],
+         visuals["overall_caption"]),
     ]
-    for col, (lbl, val, cap) in zip(cols, cards):
+    for col, (lbl, val, cap, visual, subcap) in zip(cols, cards):
         with col:
             st.markdown(
                 f"""
                 <div class="metric">
-                    <div class="m-label">{lbl}</div>
+                    <div class="metric-head">
+                        <div class="m-label">{lbl}</div>
+                        <div class="m-kicker">{cap}</div>
+                    </div>
                     <div class="m-value">{val}</div>
-                    <div class="m-cap">{cap}</div>
+                    <div class="metric-visual">{visual}</div>
+                    <div class="metric-subcap">{subcap}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-
-    st.markdown(
-        f"""
-        <div style="margin-top:10px;">
-            <div class="slim-track"><div class="slim-fill" style="width:{pct}%"></div></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def render_month_nav() -> None:
@@ -688,15 +1235,23 @@ def render_calendar(month: int) -> None:
                 in_range = START_DATE <= d <= END_DATE
                 if d.month != month:
                     # Spillover: blank spacer to preserve grid shape
-                    st.markdown("<span class='cell-anchor is-empty'></span>",
-                                unsafe_allow_html=True)
-                    st.button(" ", key=f"empty-{w_idx}-{i}", disabled=True,
-                              use_container_width=True)
+                    st.markdown("<div class='cal-spacer'></div>", unsafe_allow_html=True)
                     continue
                 if not in_range:
                     # In-month but out of program window: calm dashed tile
                     st.markdown("<span class='cell-anchor is-disabled'></span>",
                                 unsafe_allow_html=True)
+                    st.markdown(
+                        build_day_card_html(
+                            d=d,
+                            label="",
+                            color="grey",
+                            is_selected=False,
+                            is_today=False,
+                            disabled=True,
+                        ),
+                        unsafe_allow_html=True,
+                    )
                     st.button(str(d.day), key=f"oor-{w_idx}-{i}", disabled=True,
                               use_container_width=True)
                     continue
@@ -718,32 +1273,23 @@ def render_calendar(month: int) -> None:
                     f"<span class='{' '.join(anchor_classes)}'></span>",
                     unsafe_allow_html=True,
                 )
-
-                st.markdown("<div class='cell-wrap'>", unsafe_allow_html=True)
+                st.markdown(
+                    build_day_card_html(
+                        d=d,
+                        label=r["label"],
+                        color=r["color"],
+                        is_selected=is_sel,
+                        is_today=is_today,
+                        am_done=am_done,
+                        pm_done=pm_done,
+                        shaving=shaving,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
                 if st.button(str(d.day), key=f"day-{k}", use_container_width=True):
                     st.session_state.selected_date = d
                     st.rerun()
-
-                shave_glyph = "<div class='cell-shave'>✂</div>" if shaving else "<div></div>"
-                am_cls = "cell-dot filled" if am_done else "cell-dot"
-                pm_cls = "cell-dot filled" if pm_done else "cell-dot"
-                st.markdown(
-                    f"""
-                    <div class='cell-overlay'>
-                        <div class='cell-top'><div></div>{shave_glyph}</div>
-                        <div class='cell-bot'>
-                            <div class='cell-label'>{r['label']}</div>
-                            <div class='cell-dots'>
-                                <span class='{am_cls}'></span>
-                                <span class='{pm_cls}'></span>
-                            </div>
-                        </div>
-                    </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
 
 
 def render_today_panel(ls: LocalStorage) -> None:
@@ -787,11 +1333,7 @@ def render_today_panel(ls: LocalStorage) -> None:
         st.rerun()
 
     st.markdown(
-        f"""
-        <div class="warn" style="margin-top:14px;">
-            <div class="warn-icon">⚠</div><div>{r['warning']}</div>
-        </div>
-        """,
+        f"<div style='margin-top:14px;'>{build_warning_html(r['warning'])}</div>",
         unsafe_allow_html=True,
     )
 
@@ -800,63 +1342,52 @@ def render_today_panel(ls: LocalStorage) -> None:
     pm_done = bool(st.session_state.done.get(f"{k}-pm"))
     slot = st.session_state.get("active_slot", "am")
 
-    tab_cols = st.columns(2, gap="small")
-    am_label = "Morning" + ("  ✓" if am_done else "")
-    pm_label = "Night" + ("  ✓" if pm_done else "")
-    with tab_cols[0]:
-        if st.button(am_label, key="tab-am", use_container_width=True,
-                     type="primary" if slot == "am" else "secondary"):
-            st.session_state.active_slot = "am"
-            st.rerun()
-    with tab_cols[1]:
-        if st.button(pm_label, key="tab-pm", use_container_width=True,
-                     type="primary" if slot == "pm" else "secondary"):
-            st.session_state.active_slot = "pm"
-            st.rerun()
-
     is_am = slot == "am"
     steps = r["am"] if is_am else r["pm"]
     slot_done = am_done if is_am else pm_done
-    steps_html = "".join(
-        f"<div class='step-row'><span class='step-num'>{i}</span><span>{step}</span></div>"
-        for i, step in enumerate(steps, 1)
-    )
-    st.markdown(
-        f"<div class='surface-tight' style='margin-top:10px;'>{steps_html}</div>",
-        unsafe_allow_html=True,
-    )
+    with st.container():
+        st.markdown("<span class='routine-surface-anchor'></span>", unsafe_allow_html=True)
+        st.markdown(
+            build_routine_surface_html(
+                steps=steps,
+                active_slot=slot,
+                am_done=am_done,
+                pm_done=pm_done,
+                slot_done=slot_done,
+            ),
+            unsafe_allow_html=True,
+        )
 
-    if slot_done:
-        btn_label = "✓ Morning done" if is_am else "✓ Night done"
-    else:
-        btn_label = "Mark morning complete" if is_am else "Mark night complete"
-    if st.button(btn_label, key=f"complete-{slot}", use_container_width=True,
-                 type="primary" if slot_done else "secondary"):
-        slot_key = f"{k}-{slot}"
+        tab_cols = st.columns(2, gap="small")
+        with tab_cols[0]:
+            if st.button("Morning", key="tab-am", use_container_width=True):
+                st.session_state.active_slot = "am"
+                st.rerun()
+        with tab_cols[1]:
+            if st.button("Night", key="tab-pm", use_container_width=True):
+                st.session_state.active_slot = "pm"
+                st.rerun()
+
         if slot_done:
-            st.session_state.done.pop(slot_key, None)
-            st.toast(f"{'Morning' if is_am else 'Night'} unchecked")
+            btn_label = "✓ Morning done" if is_am else "✓ Night done"
         else:
-            st.session_state.done[slot_key] = True
-            st.toast(f"{'Morning' if is_am else 'Night'} logged ✓")
-        save_done(ls)
-        st.rerun()
+            btn_label = "Mark morning complete" if is_am else "Mark night complete"
+        if st.button(btn_label, key=f"complete-{slot}", use_container_width=True):
+            slot_key = f"{k}-{slot}"
+            if slot_done:
+                st.session_state.done.pop(slot_key, None)
+                st.toast(f"{'Morning' if is_am else 'Night'} unchecked")
+            else:
+                st.session_state.done[slot_key] = True
+                st.toast(f"{'Morning' if is_am else 'Night'} logged ✓")
+            save_done(ls)
+            st.rerun()
 
 
 def render_sidebar(ls: LocalStorage) -> None:
     with st.sidebar:
         st.markdown("<div class='label-tiny'>Routines</div>", unsafe_allow_html=True)
-        legend_html = ""
-        for color, name, when in ROUTINE_LEGEND:
-            _tint, _ink, accent = PILL_COLORS[color]
-            legend_html += (
-                f"<div class='legend-row'>"
-                f"<span class='legend-dot' style='background:{accent};'></span>"
-                f"<span class='legend-name'>{name}</span>"
-                f"<span class='legend-when'>{when}</span>"
-                f"</div>"
-            )
-        st.markdown(legend_html, unsafe_allow_html=True)
+        st.markdown(build_legend_html(ROUTINE_LEGEND), unsafe_allow_html=True)
 
         st.markdown("<div class='label-tiny' style='margin-top:18px;'>Products</div>",
                     unsafe_allow_html=True)
@@ -874,6 +1405,8 @@ def render_sidebar(ls: LocalStorage) -> None:
             "<div class='label-tiny' style='margin-top:18px;'>Rule of thumb</div>",
             unsafe_allow_html=True,
         )
+        st.markdown(f"<span class='tip-dot-shell active-tip-{tip_idx}'></span>",
+                    unsafe_allow_html=True)
         dot_cols = st.columns([6, 1, 1, 1])
         for i in range(len(tips)):
             with dot_cols[i + 1]:
@@ -882,10 +1415,7 @@ def render_sidebar(ls: LocalStorage) -> None:
                     st.session_state.tip_idx = i
                     st.rerun()
         title, body = tips[tip_idx]
-        st.markdown(
-            f"<div class='tip-card'><strong>{title}.</strong> {body}</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown(build_tip_card_html(title, body), unsafe_allow_html=True)
 
         st.markdown("<div class='label-tiny' style='margin-top:18px;color:#b91c1c;'>Danger zone</div>",
                     unsafe_allow_html=True)
@@ -923,8 +1453,9 @@ def main() -> None:
     ls = LocalStorage()
 
     if "selected_date" not in st.session_state:
-        st.session_state.selected_date = START_DATE
-        st.session_state.month = START_DATE.month
+        selected, month = initial_calendar_state()
+        st.session_state.selected_date = selected
+        st.session_state.month = month
         st.session_state.done = {}
         st.session_state.shave_days = {}
         st.session_state.confirm_reset = False
