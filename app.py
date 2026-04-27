@@ -73,6 +73,10 @@ PRODUCTS = [
 
 LS_DONE_KEY = "skincare_done_v2"
 LS_SHAVE_KEY = "skincare_shave_days_v1"
+LS_INTRO_KEY = "skincare_intro_seen_v1"
+LS_CELEBRATED_KEY = "skincare_celebrated_streak_v1"
+
+STREAK_MILESTONES = (3, 7, 14, 30, 60, 100)
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +221,22 @@ def hydrate(ls: LocalStorage) -> None:
         return
     st.session_state.done = _parse(ls.getItem(LS_DONE_KEY))
     st.session_state.shave_days = _parse(ls.getItem(LS_SHAVE_KEY))
+    intro_raw = ls.getItem(LS_INTRO_KEY)
+    st.session_state.intro_seen = bool(intro_raw) and intro_raw not in ("", "false", "null")
+    celebrated_raw = ls.getItem(LS_CELEBRATED_KEY)
+    try:
+        st.session_state.celebrated_streak = int(celebrated_raw) if celebrated_raw else 0
+    except (TypeError, ValueError):
+        st.session_state.celebrated_streak = 0
     st.session_state._hydrated = True
+
+
+def save_intro_seen(ls: LocalStorage) -> None:
+    ls.setItem(LS_INTRO_KEY, "1", key="ls-set-intro")
+
+
+def save_celebrated(ls: LocalStorage, streak: int) -> None:
+    ls.setItem(LS_CELEBRATED_KEY, str(streak), key="ls-set-celebrated")
 
 
 def save_done(ls: LocalStorage) -> None:
@@ -1008,6 +1027,109 @@ def inject_styles() -> None:
         }}
         div.stButton > button:hover {{ transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }}
 
+        /* ---------- Intro banner ---------- */
+        .intro-banner {{
+            display: flex; gap: 14px; align-items: flex-start;
+            background: linear-gradient(135deg, #fef7d6 0%, #dbe7ff 100%);
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin: 8px 0 12px;
+            box-shadow: var(--shadow-card);
+        }}
+        .intro-icon {{ font-size: 22px; line-height: 1; }}
+        .intro-title {{ font-weight: 800; font-size: 15px; color: #111111; margin-bottom: 4px; }}
+        .intro-text {{ font-size: 13px; color: #1f2937; line-height: 1.5; }}
+        div.st-key-intro-dismiss button {{
+            background: #111111 !important; color: #ffffff !important;
+            border: 0 !important; border-radius: 999px !important;
+            padding: 6px 18px !important; min-height: 36px !important;
+            font-weight: 700 !important;
+        }}
+
+        /* ---------- Streak celebration ---------- */
+        .celebrate {{
+            position: relative; overflow: hidden;
+            background: linear-gradient(135deg, #d4f4dd 0%, #fef7d6 100%);
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin: 6px 0 14px;
+            box-shadow: var(--shadow-pop);
+            animation: celebrate-pop 420ms cubic-bezier(.2,1.3,.4,1);
+        }}
+        .celebrate-body {{ display: flex; gap: 14px; align-items: center; position: relative; z-index: 2; }}
+        .celebrate-emoji {{ font-size: 28px; line-height: 1; }}
+        .celebrate-title {{ font-weight: 800; font-size: 16px; color: #14532d; }}
+        .celebrate-text {{ font-size: 13px; color: #1f2937; }}
+        .celebrate-confetti {{
+            position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1;
+        }}
+        .confetti-piece {{
+            position: absolute; top: -10px;
+            width: 8px; height: 12px; border-radius: 2px;
+            animation: confetti-fall 1.6s ease-in forwards;
+        }}
+        .confetti-piece.c0 {{ background: #f5c518; }}
+        .confetti-piece.c1 {{ background: #16a34a; }}
+        .confetti-piece.c2 {{ background: #2563eb; }}
+        .confetti-piece.c3 {{ background: #dc2626; }}
+        .confetti-piece.c4 {{ background: #111111; }}
+        @keyframes confetti-fall {{
+            0%   {{ transform: translateY(-20px) rotate(0deg);   opacity: 1; }}
+            100% {{ transform: translateY(140px) rotate(540deg); opacity: 0; }}
+        }}
+        @keyframes celebrate-pop {{
+            0%   {{ transform: scale(0.96); opacity: 0; }}
+            100% {{ transform: scale(1);    opacity: 1; }}
+        }}
+
+        /* ---------- Day nav strip ---------- */
+        .day-nav-label {{
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-height: 38px;
+        }}
+        .day-nav-date {{
+            font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #6b7280;
+        }}
+        .day-nav-rel {{
+            font-size: 12px; font-weight: 700; color: #111111;
+            margin-top: 1px;
+        }}
+        div.st-key-prev-day button,
+        div.st-key-next-day button {{
+            min-height: 38px !important;
+            background: #ffffff !important;
+            color: #111111 !important;
+            border: 1px solid #e5e7eb !important;
+            font-size: 18px !important; font-weight: 700 !important;
+            padding: 0 !important;
+        }}
+        div.st-key-prev-day button:disabled,
+        div.st-key-next-day button:disabled {{
+            color: #d1d5db !important; background: #f9fafb !important;
+        }}
+
+        /* ---------- Tomorrow preview ---------- */
+        .tomorrow-preview {{
+            display: flex; align-items: center; gap: 12px;
+            background: #ffffff; border: 1px solid #e5e7eb;
+            border-radius: 12px; padding: 12px 14px;
+            margin-top: 12px;
+            box-shadow: var(--shadow-card);
+        }}
+        .tomorrow-pip {{
+            width: 6px; height: 28px; border-radius: 999px; flex: 0 0 auto;
+        }}
+        .tomorrow-text {{ display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }}
+        .tomorrow-label {{
+            font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; color: #6b7280;
+        }}
+        .tomorrow-name {{ font-size: 14px; font-weight: 700; color: #111111; }}
+        .tomorrow-arrow {{ color: #9ca3af; font-size: 18px; }}
+
         /* ---------- Sticky today panel on desktop ---------- */
         @media (min-width: 1024px) {{
             div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {{
@@ -1125,6 +1247,104 @@ def render_header() -> None:
             "so the calendar switches that day to a calming routine. Your progress is saved in "
             "this browser."
         )
+        st.markdown(
+            "**Keyboard shortcuts:** "
+            "`J` previous day · `K` next day · `T` today · "
+            "`M` morning tab · `N` night tab · `A` toggle morning · `P` toggle night."
+        )
+
+
+def render_intro_banner(ls: LocalStorage) -> None:
+    if st.session_state.get("intro_seen"):
+        return
+    st.markdown(
+        """
+        <div class="intro-banner">
+            <div class="intro-icon">✨</div>
+            <div class="intro-body">
+                <div class="intro-title">Welcome — here's the gist</div>
+                <div class="intro-text">
+                    Tap any day to see its routine. Mark <b>Morning</b> and <b>Night</b>
+                    when you finish. Mark <b>shaving days</b> for a calming routine.
+                    Progress is saved in this browser — no account needed.
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("Got it", key="intro-dismiss", use_container_width=False):
+        st.session_state.intro_seen = True
+        save_intro_seen(ls)
+        st.rerun()
+
+
+def render_celebration(ls: LocalStorage, streak: int) -> None:
+    """Show a one-shot confetti banner when crossing a streak milestone."""
+    last = int(st.session_state.get("celebrated_streak", 0) or 0)
+    if streak <= last or streak not in STREAK_MILESTONES:
+        return
+    pieces = "".join(
+        f"<span class='confetti-piece c{i % 5}' style='left:{i * 7 % 100}%;animation-delay:{i * 0.08:.2f}s'></span>"
+        for i in range(28)
+    )
+    msg = {
+        3: "3 days in a row — nice start.",
+        7: "A full week. Skin loves consistency.",
+        14: "Two weeks. You're building a real habit.",
+        30: "30 days! Your routine is officially a routine.",
+        60: "60 days. Glow incoming.",
+        100: "100 days. Legendary.",
+    }.get(streak, f"{streak} days in a row.")
+    st.markdown(
+        f"""
+        <div class="celebrate">
+            <div class="celebrate-confetti">{pieces}</div>
+            <div class="celebrate-body">
+                <div class="celebrate-emoji">🎉</div>
+                <div>
+                    <div class="celebrate-title">{streak}-day streak</div>
+                    <div class="celebrate-text">{msg}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.session_state.celebrated_streak = streak
+    save_celebrated(ls, streak)
+
+
+def inject_keyboard_shortcuts() -> None:
+    js = """
+    <script>
+    (function() {
+      const doc = window.parent ? window.parent.document : document;
+      if (doc._scKeysAttached) return;
+      doc._scKeysAttached = true;
+      const map = {
+        'j': 'prev-day', 'k': 'next-day', 't': 'jump-today',
+        'm': 'tab-am', 'n': 'tab-pm',
+        'a': 'complete-am', 'p': 'complete-pm'
+      };
+      doc.addEventListener('keydown', function(e) {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        const t = e.target;
+        if (!t) return;
+        const tag = (t.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || t.isContentEditable) return;
+        const key = map[e.key.toLowerCase()];
+        if (!key) return;
+        const btn = doc.querySelector('.st-key-' + key + ' button');
+        if (btn) { e.preventDefault(); btn.click(); }
+      });
+    })();
+    </script>
+    """
+    try:
+        st.html(js)
+    except AttributeError:
+        st.markdown(js, unsafe_allow_html=True)
 
 
 def render_stats_strip(done: dict) -> None:
@@ -1136,19 +1356,28 @@ def render_stats_strip(done: dict) -> None:
     visuals = build_stats_visuals(done, today)
 
     cols = st.columns(3)
+    no_progress = pct == 0 and streak == 0 and week_done == 0
+    streak_subcap = (
+        "Start tonight — one routine begins your streak." if no_progress
+        else f"<b>{streak}</b> {'day' if streak == 1 else 'days'} in a row · AM + PM"
+    )
+    overall_subcap = (
+        "You’re at the start of the program — plenty of time." if no_progress
+        else visuals["overall_caption"]
+    )
     cards = [
         (
             "Streak",
             f"{streak} {'day' if streak == 1 else 'days'}",
             "last 7 days",
             visuals["streak_dots"],
-            f"<b>{streak}</b> {'day' if streak == 1 else 'days'} in a row · AM + PM",
+            streak_subcap,
         ),
         ("This week", f"{week_done} / {week_total}" if week_total else "—",
          "Mon → Sun", visuals["week_chips"],
-         f"<b>{week_done}</b> of {week_total} routines logged" if week_total else "No routines this week"),
+         (f"<b>{week_done}</b> of {week_total} routines logged" if week_total else "No routines this week")),
         ("Overall", f"{pct}%", f"{days_total} days total", visuals["overall_bar"],
-         visuals["overall_caption"]),
+         overall_subcap),
     ]
     for col, (lbl, val, cap, visual, subcap) in zip(cols, cards):
         with col:
@@ -1290,6 +1519,42 @@ def render_today_panel(ls: LocalStorage) -> None:
     tint, ink, _accent = PILL_COLORS[r["color"]]
     _teal_tint, teal_ink, _teal_accent = PILL_COLORS["teal"]
 
+    # ---- Day navigation strip (prev / label / next) ----
+    nav = st.columns([1, 4, 1], gap="small")
+    with nav[0]:
+        if st.button("‹", key="prev-day",
+                     disabled=selected <= START_DATE,
+                     use_container_width=True):
+            new_d = selected - timedelta(days=1)
+            st.session_state.selected_date = new_d
+            st.session_state.month = new_d.month
+            st.rerun()
+    with nav[1]:
+        rel = ""
+        today_real = date.today()
+        if selected == today_real:
+            rel = "Today"
+        elif selected == today_real - timedelta(days=1):
+            rel = "Yesterday"
+        elif selected == today_real + timedelta(days=1):
+            rel = "Tomorrow"
+        rel_html = f"<span class='day-nav-rel'>{rel}</span>" if rel else ""
+        st.markdown(
+            f"<div class='day-nav-label'>"
+            f"<span class='day-nav-date'>{DAY_NAMES_SHORT[selected.weekday()]} · "
+            f"{MONTH_NAMES[selected.month - 1][:3]} {selected.day}</span>{rel_html}"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with nav[2]:
+        if st.button("›", key="next-day",
+                     disabled=selected >= END_DATE,
+                     use_container_width=True):
+            new_d = selected + timedelta(days=1)
+            st.session_state.selected_date = new_d
+            st.session_state.month = new_d.month
+            st.rerun()
+
     # Hero — meta, title, meaning. Shave toggle rendered below as a Streamlit
     # button styled to match the spec's outline pill.
     st.markdown(
@@ -1381,6 +1646,29 @@ def render_today_panel(ls: LocalStorage) -> None:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ---- Tomorrow preview ----
+    if selected < END_DATE:
+        tomorrow = selected + timedelta(days=1)
+        t_shaving = bool(st.session_state.shave_days.get(date_key(tomorrow)))
+        t_r = routine_for(tomorrow, t_shaving)
+        _t_tint, _t_ink, t_accent = PILL_COLORS[t_r["color"]]
+        t_rel = "Tomorrow"
+        if tomorrow == date.today():
+            t_rel = "Today"
+        st.markdown(
+            f"""
+            <div class="tomorrow-preview">
+                <span class="tomorrow-pip" style="background:{t_accent}"></span>
+                <div class="tomorrow-text">
+                    <span class="tomorrow-label">{t_rel}</span>
+                    <span class="tomorrow-name">{html.escape(t_r['label'])}</span>
+                </div>
+                <span class="tomorrow-arrow">›</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
 
 def render_sidebar(ls: LocalStorage) -> None:
     with st.sidebar:
@@ -1461,6 +1749,10 @@ def main() -> None:
     hydrate(ls)
 
     render_header()
+    render_intro_banner(ls)
+    inject_keyboard_shortcuts()
+    streak_now = compute_streak(st.session_state.done, get_today())
+    render_celebration(ls, streak_now)
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
     render_stats_strip(st.session_state.done)
     render_month_nav()
