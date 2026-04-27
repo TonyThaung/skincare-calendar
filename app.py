@@ -51,12 +51,11 @@ PILL_COLORS = {
 }
 
 ROUTINE_LEGEND = [
-    ("purple", "Retinal", "MON · FRI", "Anti-ageing & glow", "Medik8 Retinal 6"),
-    ("blue", "Optional Toner", "TUE", "Gentle exfoliation", "SKIN1004 Toner"),
-    ("green", "Azelaic Acid", "WED", "Acne & redness", "Cos De BAHA 10%"),
-    ("pink", "Anua", "THU", "Pigmentation & tone", "Niacinamide + TXA"),
-    ("grey", "Recovery", "SAT", "Barrier repair", "No actives"),
-    ("orange", "Choose One", "SUN", "Pick what skin needs", "Anua or azelaic"),
+    ("purple", "Retinal", "MON · FRI", "Anti-ageing & texture", "Medik8 Crystal Retinal 6 · 2×/wk"),
+    ("green", "Azelaic Acid", "WED · SUN", "Acne, redness & PIH", "Cos De BAHA 10% · 2×/wk"),
+    ("pink", "Anua", "THU", "Pigmentation & tone", "Niacinamide + TXA · 1×/wk"),
+    ("grey", "Recovery", "TUE · SAT", "Barrier repair, no actives", "Centella + Vanicream"),
+    ("blue", "PHA (opt-in)", "SAT only if calm", "Gentle exfoliation, optional", "SKIN1004 toner · 0–1×/wk"),
 ]
 
 PRODUCTS = [
@@ -75,6 +74,9 @@ LS_DONE_KEY = "skincare_done_v2"
 LS_SHAVE_KEY = "skincare_shave_days_v1"
 LS_INTRO_KEY = "skincare_intro_seen_v1"
 LS_CELEBRATED_KEY = "skincare_celebrated_streak_v1"
+LS_OUTDOOR_KEY = "skincare_outdoor_days_v1"
+LS_BREAKOUT_KEY = "skincare_breakout_week_v1"
+LS_PATCH_KEY = "skincare_patch_test_v1"
 
 STREAK_MILESTONES = (3, 7, 14, 30, 60, 100)
 
@@ -82,81 +84,114 @@ STREAK_MILESTONES = (3, 7, 14, 30, 60, 100)
 # ---------------------------------------------------------------------------
 # Routine logic (mirrors the JSX `routineFor`)
 # ---------------------------------------------------------------------------
-def routine_for(d: date, is_shaving_day: bool) -> dict:
-    jsx_day = (d.weekday() + 1) % 7  # Sun=0..Sat=6 to match original
+def routine_for(d: date, is_shaving_day: bool, outdoor: bool = False,
+                breakout_week: bool = False, pha_opt_in: bool = False) -> dict:
+    """Evidence-based 7-day rotation.
+
+    Mon Retinal · Tue Recovery · Wed Azelaic · Thu Anua ·
+    Fri Retinal · Sat Recovery (or PHA opt-in) · Sun Azelaic.
+    """
+    py_day = d.weekday()  # Mon=0 .. Sun=6
 
     label = "Recovery"
     color = "grey"
-    simple_meaning = "Barrier repair night. This keeps your skin calm and less breakout-prone."
-    warning = "No strong actives tonight. Recovery nights are what stop irritation from building up."
+    simple_meaning = "Barrier repair night. Keeps your skin calm and less breakout-prone."
+    warning = "No strong actives tonight. Recovery nights are what prevent irritation from building up."
 
+    spf_step = (
+        "Apply your outdoor water-resistant SPF50+ as the final step (reapply every 2 hours)"
+        if outdoor else
+        "Apply BOJ Aqua-Fresh SPF as the final step"
+    )
     am = [
-        "Cleanse or rinse with water",
-        "Apply Dr. Althea Gentle Vitamin C Serum",
+        "Cleanse lightly or rinse with water",
+        "Apply Dr. Althea Gentle Vitamin C Serum (every other morning while phasing in)",
         "Apply ONE calming layer: Purito Centella OR COSRX Snail Mucin",
-        "Apply a tiny amount of Vanicream only if your skin feels dry",
-        "Apply sunscreen as the final step",
+        "Apply Vanicream only if your skin feels dry",
+        spf_step,
     ]
     pm = [
         "Cleanse",
-        "Apply COSRX Snail Mucin",
         "Apply Purito Centella Serum",
+        "Optional: COSRX Snail Mucin if dehydrated",
         "Seal with Vanicream Ceramide Moisturiser",
     ]
 
-    if jsx_day in (1, 5):
+    if py_day in (0, 4):  # Mon, Fri
         label = "Retinal"
         color = "purple"
         simple_meaning = "Anti-ageing, texture, pores, and glow night."
-        warning = "Do not use Anua, azelaic acid, or SKIN1004 toner tonight."
+        warning = "Do not stack with Anua, azelaic acid, or PHA tonight. Skip if you are shaving tomorrow."
         pm = [
             "Cleanse and dry your face fully",
-            "Apply Purito Centella OR COSRX Snail Mucin if your skin feels sensitive",
-            "Apply Medik8 Retinal 6, pea-size amount for the whole face",
+            "Optional: thin layer of Vanicream first if your skin is reactive",
+            "Apply Medik8 Crystal Retinal 6 \u2014 pea-sized for the whole face",
             "Seal with Vanicream Ceramide Moisturiser",
         ]
-    elif jsx_day == 2:
-        label = "Optional Toner"
-        color = "blue"
-        simple_meaning = "Very gentle exfoliation night. Only do this if your skin feels calm."
-        warning = "Skip the SKIN1004 toner if your skin is dry, tight, red, peeling, freshly shaved, or bumpy."
-        pm = [
-            "Cleanse",
-            "Apply SKIN1004 Toner only if your skin is calm",
-            "Apply COSRX Snail Mucin",
-            "Seal with Vanicream Ceramide Moisturiser",
-        ]
-    elif jsx_day == 3:
+    elif py_day == 1:  # Tuesday — Recovery (was Optional Toner)
+        label = "Recovery"
+        color = "grey"
+        simple_meaning = "Barrier night between Monday's retinal and Wednesday's azelaic."
+        warning = "No actives tonight. This is the night your skin earns back tolerance."
+    elif py_day == 2:  # Wednesday — Azelaic
         label = "Azelaic Acid"
         color = "green"
         simple_meaning = "Acne, redness, bumps, and post-acne mark night."
-        warning = "Do not use retinal, Anua, or SKIN1004 toner tonight."
+        warning = "Do not stack with retinal, Anua, or PHA tonight."
         pm = [
             "Cleanse and pat dry",
             "Apply Cos De BAHA Azelaic Acid 10% Serum",
-            "Apply Purito Centella OR COSRX Snail Mucin",
+            "Optional: Centella or Snail Mucin if dry",
             "Seal with Vanicream Ceramide Moisturiser",
         ]
-    elif jsx_day == 4:
+    elif py_day == 3:  # Thursday — Anua
         label = "Anua"
         color = "pink"
         simple_meaning = "Pigmentation, uneven tone, and brightening night."
-        warning = "Do not use retinal, azelaic acid, or SKIN1004 toner tonight."
+        warning = "Do not stack with retinal, azelaic, or PHA tonight."
         pm = [
             "Cleanse",
             "Apply Anua Niacinamide 10% + TXA 4% Serum",
-            "Apply Purito Centella OR COSRX Snail Mucin",
             "Seal with Vanicream Ceramide Moisturiser",
         ]
-    elif jsx_day == 0:
-        label = "Choose One"
-        color = "orange"
-        simple_meaning = "Flexible treatment night. Pick based on what your skin needs most."
-        warning = "Choose only one active: Anua OR azelaic acid. Never both on the same night."
+    elif py_day == 5:  # Saturday — Recovery default; PHA opt-in if calm + no recent shave
+        if pha_opt_in and not breakout_week:
+            label = "PHA (opt-in)"
+            color = "blue"
+            simple_meaning = "Optional gentle exfoliation. Only if skin feels calm and you have not shaved in 24h."
+            warning = "Skip if dry, tight, red, peeling, freshly shaved, or bumpy."
+            pm = [
+                "Cleanse",
+                "Apply SKIN1004 Centella Toning Toner",
+                "Apply Centella or Snail Mucin",
+                "Seal with Vanicream Ceramide Moisturiser",
+            ]
+        else:
+            label = "Recovery"
+            color = "grey"
+            simple_meaning = "Barrier night. PHA only if your skin is fully calm \u2014 otherwise rest."
+            warning = "No actives. Skip the PHA toner this week if you have shaved or felt any sting."
+    elif py_day == 6:  # Sunday — Azelaic (was Choose One)
+        label = "Azelaic Acid"
+        color = "green"
+        simple_meaning = "Second azelaic night for acne and PIH."
+        warning = "If skin feels irritated, switch this to a recovery night instead."
+        pm = [
+            "Cleanse and pat dry",
+            "Apply Cos De BAHA Azelaic Acid 10% Serum",
+            "Optional: Centella or Snail Mucin if dry",
+            "Seal with Vanicream Ceramide Moisturiser",
+        ]
+
+    # Breakout week override: strip PHA, force calm Sat, keep Sun azelaic.
+    if breakout_week and py_day == 5:
+        label = "Recovery"
+        color = "grey"
+        simple_meaning = "Breakout week \u2014 skin needs rest, not exfoliation."
+        warning = "PHA disabled this week. Centella + Vanicream only."
         pm = [
             "Cleanse",
-            "Choose ONE: Anua if pigmentation is the issue OR azelaic acid if acne/redness is the issue",
-            "Apply Purito Centella OR COSRX Snail Mucin",
+            "Apply Purito Centella Serum",
             "Seal with Vanicream Ceramide Moisturiser",
         ]
 
@@ -164,27 +199,27 @@ def routine_for(d: date, is_shaving_day: bool) -> dict:
         label = "Shaving"
         color = "teal"
         simple_meaning = (
-            "Shaving day. Keep the routine calm so you do not trigger razor bumps, "
-            "irritation, or clogged-feeling skin."
+            "Shaving day. Treat the skin like it just had a procedure \u2014 "
+            "calming products only so you do not trigger razor bumps or PFB."
         )
         warning = (
-            "After shaving, skip retinal, azelaic acid, Anua, SKIN1004 toner, "
-            "and vitamin C on shaved areas for that routine."
+            "Tonight is a recovery night. No retinal, azelaic, Anua, PHA, or vitamin C "
+            "on shaved areas. With-the-grain, minimal passes, no skin stretching."
         )
         am = [
-            "Cleanse or soften skin with warm water",
-            "Shave gently with a clean razor and shaving gel/cream",
-            "Rinse with cool water and pat dry",
-            "Apply Purito Centella OR COSRX Snail Mucin",
-            "Apply a tiny amount of Vanicream if skin feels dry or tight",
-            "Apply sunscreen as the final step",
+            "Cleanse gently or soften with warm water",
+            "Shave with the grain \u2014 minimal passes, light pressure, no skin stretching",
+            "Cool rinse and pat dry",
+            "Apply Purito Centella Serum",
+            "Apply Vanicream if skin feels tight",
+            spf_step,
         ]
         pm = [
             "Cleanse gently",
-            "If you shave at night: shave now, then rinse and pat dry",
-            "Apply Purito Centella OR COSRX Snail Mucin",
-            "Apply Vanicream Ceramide Moisturiser",
-            "No actives tonight",
+            "If shaving at night: shave now, then cool rinse and pat dry",
+            "Apply Purito Centella Serum",
+            "Seal with Vanicream Ceramide Moisturiser",
+            "No actives tonight \u2014 shave day = recovery day",
         ]
 
     return {
@@ -221,6 +256,12 @@ def hydrate(ls: LocalStorage) -> None:
         return
     st.session_state.done = _parse(ls.getItem(LS_DONE_KEY))
     st.session_state.shave_days = _parse(ls.getItem(LS_SHAVE_KEY))
+    st.session_state.outdoor_days = _parse(ls.getItem(LS_OUTDOOR_KEY))
+    breakout_raw = ls.getItem(LS_BREAKOUT_KEY)
+    st.session_state.breakout_week = bool(breakout_raw) and breakout_raw not in ("", "false", "null", "0")
+    patch_raw = ls.getItem(LS_PATCH_KEY)
+    parsed_patch = _parse(patch_raw)
+    st.session_state.patch_test = parsed_patch if isinstance(parsed_patch, dict) else {}
     intro_raw = ls.getItem(LS_INTRO_KEY)
     st.session_state.intro_seen = bool(intro_raw) and intro_raw not in ("", "false", "null")
     celebrated_raw = ls.getItem(LS_CELEBRATED_KEY)
@@ -237,6 +278,18 @@ def save_intro_seen(ls: LocalStorage) -> None:
 
 def save_celebrated(ls: LocalStorage, streak: int) -> None:
     ls.setItem(LS_CELEBRATED_KEY, str(streak), key="ls-set-celebrated")
+
+
+def save_outdoor(ls: LocalStorage) -> None:
+    ls.setItem(LS_OUTDOOR_KEY, json.dumps(st.session_state.outdoor_days), key="ls-set-outdoor")
+
+
+def save_breakout(ls: LocalStorage) -> None:
+    ls.setItem(LS_BREAKOUT_KEY, "1" if st.session_state.breakout_week else "0", key="ls-set-breakout")
+
+
+def save_patch(ls: LocalStorage) -> None:
+    ls.setItem(LS_PATCH_KEY, json.dumps(st.session_state.patch_test), key="ls-set-patch")
 
 
 def save_done(ls: LocalStorage) -> None:
@@ -1477,7 +1530,9 @@ def render_calendar(month: int) -> None:
 
                 k = date_key(d)
                 shaving = bool(st.session_state.shave_days.get(k))
-                r = routine_for(d, shaving)
+                outdoor = bool(st.session_state.get("outdoor_days", {}).get(k))
+                breakout = bool(st.session_state.get("breakout_week"))
+                r = routine_for(d, shaving, outdoor=outdoor, breakout_week=breakout)
                 is_sel = d == selected
                 is_today = d == today_real
                 am_done = bool(st.session_state.done.get(f"{k}-am"))
@@ -1515,7 +1570,11 @@ def render_today_panel(ls: LocalStorage) -> None:
     selected = st.session_state.selected_date
     k = date_key(selected)
     shaving = bool(st.session_state.shave_days.get(k))
-    r = routine_for(selected, shaving)
+    outdoor = bool(st.session_state.get("outdoor_days", {}).get(k))
+    breakout = bool(st.session_state.get("breakout_week"))
+    pha_opt_in = bool(st.session_state.get("pha_opt_in"))
+    r = routine_for(selected, shaving, outdoor=outdoor,
+                    breakout_week=breakout, pha_opt_in=pha_opt_in)
     tint, ink, _accent = PILL_COLORS[r["color"]]
     _teal_tint, teal_ink, _teal_accent = PILL_COLORS["teal"]
 
@@ -1587,6 +1646,35 @@ def render_today_panel(ls: LocalStorage) -> None:
         save_shave(ls)
         st.rerun()
 
+    # Outdoor / sweat day toggle — swaps BOJ for water-resistant SPF
+    if st.button(
+        "☀  Outdoor / sweat day" if outdoor else "☀  Mark outdoor / sweat day",
+        key="outdoor-toggle",
+        use_container_width=True,
+    ):
+        outdoor_map = st.session_state.get("outdoor_days", {})
+        if outdoor:
+            outdoor_map.pop(k, None)
+            st.toast("Outdoor day removed")
+        else:
+            outdoor_map[k] = True
+            st.toast("Outdoor SPF reminder set")
+        st.session_state.outdoor_days = outdoor_map
+        save_outdoor(ls)
+        st.rerun()
+
+    # Shave-tomorrow nudge: skip retinal/PHA tonight if shaving tomorrow
+    if r['label'] in ("Retinal", "PHA (opt-in)"):
+        tomorrow_key = date_key(selected + timedelta(days=1))
+        if st.session_state.shave_days.get(tomorrow_key):
+            st.markdown(
+                "<div class='warn-rail' style='margin-top:10px;border-left-color:#dc2626;'>"
+                "<strong>Shaving tomorrow.</strong> Skip tonight's actives — "
+                "swap to a recovery night to protect the barrier."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
     st.markdown(
         f"<div style='margin-top:14px;'>{build_warning_html(r['warning'])}</div>",
         unsafe_allow_html=True,
@@ -1650,7 +1738,9 @@ def render_today_panel(ls: LocalStorage) -> None:
     if selected < END_DATE:
         tomorrow = selected + timedelta(days=1)
         t_shaving = bool(st.session_state.shave_days.get(date_key(tomorrow)))
-        t_r = routine_for(tomorrow, t_shaving)
+        t_outdoor = bool(st.session_state.get("outdoor_days", {}).get(date_key(tomorrow)))
+        t_r = routine_for(tomorrow, t_shaving, outdoor=t_outdoor,
+                          breakout_week=breakout)
         _t_tint, _t_ink, t_accent = PILL_COLORS[t_r["color"]]
         t_rel = "Tomorrow"
         if tomorrow == date.today():
@@ -1682,9 +1772,18 @@ def render_sidebar(ls: LocalStorage) -> None:
 
         # ---- Rule of thumb (one card; pager dots) ----
         tips = [
-            ("Sunscreen", "Beauty of Joseon Aqua Fresh first. Numbuzin or SKIN1004 as backup."),
-            ("Morning",   "Keep it light. Don't layer Purito + Snail + Vanicream unless skin is dry."),
-            ("Shaving",   "Skip actives on shaving days — calming products and moisturiser only."),
+            ("Shave day = recovery day",
+             "Skip retinal, azelaic, Anua, PHA, and vitamin C on freshly shaved skin tonight."),
+            ("Outdoor sun",
+             "Use a water-resistant SPF50+ outdoors and reapply every 2 hours. Toggle outdoor day in the today panel."),
+            ("Shaving technique",
+             "With the grain. Light pressure. No skin stretching. One pass when possible — closer is not better."),
+            ("Rotation",
+             "Retinal Mon/Fri · Azelaic Wed/Sun · Anua Thu · Recovery Tue/Sat. PHA only on calm Saturdays."),
+            ("One active per night",
+             "Never stack retinal, azelaic, Anua, or PHA on the same night."),
+            ("Patch test",
+             "New product? Patch test 7–10 days on inner forearm before going on the face."),
         ]
         tip_idx = st.session_state.get("tip_idx", 0) % len(tips)
         st.markdown(
@@ -1693,7 +1792,7 @@ def render_sidebar(ls: LocalStorage) -> None:
         )
         st.markdown(f"<span class='tip-dot-shell active-tip-{tip_idx}'></span>",
                     unsafe_allow_html=True)
-        dot_cols = st.columns([6, 1, 1, 1])
+        dot_cols = st.columns([3] + [1] * len(tips))
         for i in range(len(tips)):
             with dot_cols[i + 1]:
                 if st.button("●" if i == tip_idx else "○",
@@ -1702,6 +1801,79 @@ def render_sidebar(ls: LocalStorage) -> None:
                     st.rerun()
         title, body = tips[tip_idx]
         st.markdown(build_tip_card_html(title, body), unsafe_allow_html=True)
+
+        # ---- Breakout week toggle ----
+        st.markdown("<div class='label-tiny' style='margin-top:18px;'>This week</div>",
+                    unsafe_allow_html=True)
+        breakout_now = bool(st.session_state.get("breakout_week"))
+        if st.button(
+            "✖  Breakout week active" if breakout_now else "⚠  Mark breakout week",
+            key="breakout-toggle", use_container_width=True,
+        ):
+            st.session_state.breakout_week = not breakout_now
+            save_breakout(ls)
+            st.toast("Breakout week off" if breakout_now else "Breakout week on — PHA disabled")
+            st.rerun()
+        if breakout_now:
+            st.markdown(
+                "<div class='warn-rail' style='margin-top:6px;'>PHA disabled. "
+                "Saturday → recovery. Sunday → azelaic.</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ---- PHA opt-in (Saturday only) ----
+        if not breakout_now:
+            pha_now = bool(st.session_state.get("pha_opt_in"))
+            if st.button(
+                "PHA Saturday: ON" if pha_now else "PHA Saturday: OFF (default)",
+                key="pha-toggle", use_container_width=True,
+            ):
+                st.session_state.pha_opt_in = not pha_now
+                st.toast("PHA Saturday enabled" if not pha_now else "PHA Saturday disabled")
+                st.rerun()
+
+        # ---- Patch test tracker ----
+        st.markdown("<div class='label-tiny' style='margin-top:18px;'>Patch test</div>",
+                    unsafe_allow_html=True)
+        patch = st.session_state.get("patch_test") or {}
+        if patch.get("product") and patch.get("start"):
+            try:
+                start_d = date.fromisoformat(patch["start"])
+                day_n = (date.today() - start_d).days + 1
+                total = int(patch.get("days", 10))
+                if day_n > total:
+                    st.markdown(
+                        f"<div class='warn-rail' style='border-left-color:#16a34a;'>"
+                        f"<strong>{html.escape(patch['product'])}</strong> — patch test complete "
+                        f"({total} days). If no reaction, introduce slowly to the face.</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"<div class='warn-rail' style='border-left-color:#2563eb;'>"
+                        f"<strong>Day {day_n} of {total}</strong> — "
+                        f"{html.escape(patch['product'])}. Apply 2×/day to inner forearm.</div>",
+                        unsafe_allow_html=True,
+                    )
+            except (ValueError, TypeError):
+                pass
+            if st.button("End patch test", key="patch-end", use_container_width=True):
+                st.session_state.patch_test = {}
+                save_patch(ls)
+                st.rerun()
+        else:
+            new_product = st.text_input("New product name", key="patch-product-input",
+                                        placeholder="e.g. Cancer Council SPF50+")
+            if st.button("Start 10-day patch test", key="patch-start",
+                         use_container_width=True, disabled=not new_product.strip()):
+                st.session_state.patch_test = {
+                    "product": new_product.strip(),
+                    "start": date.today().isoformat(),
+                    "days": 10,
+                }
+                save_patch(ls)
+                st.toast("Patch test started")
+                st.rerun()
 
         st.markdown("<div class='label-tiny' style='margin-top:18px;color:#b91c1c;'>Danger zone</div>",
                     unsafe_allow_html=True)
@@ -1744,6 +1916,10 @@ def main() -> None:
         st.session_state.month = month
         st.session_state.done = {}
         st.session_state.shave_days = {}
+        st.session_state.outdoor_days = {}
+        st.session_state.breakout_week = False
+        st.session_state.patch_test = {}
+        st.session_state.pha_opt_in = False
         st.session_state.confirm_reset = False
 
     hydrate(ls)
