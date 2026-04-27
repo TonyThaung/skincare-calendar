@@ -246,22 +246,25 @@ def render_calendar(month: int) -> None:
                 bg, _fg = PILL_COLORS[r["color"]]
                 am_done = st.session_state.done.get(f"{k}-am")
                 pm_done = st.session_state.done.get(f"{k}-pm")
-                marks = ("☀️" if am_done else "⛅") + ("🌙" if pm_done else "☁️")
-                shave_mark = " 🪒" if shaving else ""
-                sel_mark = "📍 " if is_sel else ""
+                
+                # Typographic indicators instead of emojis
+                am_mark = "●" if am_done else "○"
+                pm_mark = "●" if pm_done else "○"
+                shave_text = " • Shave" if shaving else ""
 
                 # Make label more uniform length
                 short_label = r['label']
-                if len(short_label) > 10:
-                    short_label = short_label[:8] + ".."
+                if len(short_label) > 12:
+                    short_label = short_label[:10] + ".."
                 
-                btn_label = f"{sel_mark}{d.day}{shave_mark}\n{short_label}\n{marks}"
+                btn_label = f"{d.day}{shave_text}\n{short_label}\nAM {am_mark}   PM {pm_mark}"
 
                 if st.button(
                     btn_label,
                     key=f"day-{k}",
                     disabled=not in_range,
                     use_container_width=True,
+                    type="primary" if is_sel else "secondary",
                 ):
                     st.session_state.selected_date = d
                     st.rerun()
@@ -293,7 +296,7 @@ def render_today_panel(ls: LocalStorage) -> None:
     )
 
     if st.button(
-        "🪒 Shaving day selected" if shaving else "Mark this as a shaving day",
+        "Selected: Shaving Day" if shaving else "Mark this as a shaving day",
         use_container_width=True,
         type="primary" if shaving else "secondary",
     ):
@@ -349,14 +352,19 @@ def main() -> None:
         """
         <style>
         div.stButton > button:first-child {
-            height: 5em;
+            height: 5.5em;
             padding: 0;
             margin: 0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
         }
         div.stButton > button > div > p {
             font-size: 0.85rem;
-            line-height: +1.2;
+            line-height: 1.4;
             text-align: center;
+            font-family: inherit;
+            font-weight: 500;
+            color: inherit;
         }
         </style>
         """,
