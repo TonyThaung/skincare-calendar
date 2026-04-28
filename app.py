@@ -88,12 +88,53 @@ LS_PATCH_KEY = "skincare_patch_test_v1"
 
 STREAK_MILESTONES = (3, 7, 14, 30, 60, 100)
 
+# Banish Kit 3.0 microneedling defaults
+BANISH_DEFAULT_RECOVERY_DAYS = 2
+BANISH_DEFAULT_CADENCE = "biweekly"  # weekly | biweekly | monthly
+BANISH_DEFAULT_SERUM = "althea"      # althea | banish | other-gentle | l-aa | none
+BANISH_HEAD_LIFETIME_SESSIONS = 4    # plan calls for swap every 4 sessions
+
+
+# ---------------------------------------------------------------------------
+# Banish helpers
+# ---------------------------------------------------------------------------
+def is_banish_day(d: date, banish_days: dict) -> bool:
+    return bool((banish_days or {}).get(d.isoformat()))
+
+
+def banish_recovery_offset(d: date, banish_days: dict, recovery_days: int = BANISH_DEFAULT_RECOVERY_DAYS) -> int:
+    """Return 0 if `d` is not in a recovery window, else the offset (1, 2, ...)
+    measured from the most recent banish session date that precedes `d`."""
+    if not banish_days or recovery_days <= 0:
+        return 0
+    for offset in range(1, recovery_days + 1):
+        check = (d - timedelta(days=offset)).isoformat()
+        if banish_days.get(check):
+            return offset
+    return 0
+
+
+def _banish_serum_step(serum_choice: str) -> str | None:
+    """Returns the PM serum step for a Banish-day, or None to skip the step."""
+    choice = (serum_choice or "").lower()
+    if choice == "althea":
+        return "Apply Dr. Althea Vitamin C Boosting Serum (2\u20133 drops, gentle press \u2014 do not rub)"
+    if choice == "banish":
+        return "Apply Banish Vitamin C Serum (2\u20133 drops, gentle press \u2014 do not rub)"
+    if choice == "other-gentle":
+        return "Apply your gentle vitamin C derivative serum (2\u20133 drops, gentle press)"
+    if choice == "l-aa":
+        return "SKIP vitamin C tonight \u2014 L-ascorbic acid stings on stamped skin. Resume on day +3."
+    return None  # "none" or unrecognised
+
 
 # ---------------------------------------------------------------------------
 # Routine logic (mirrors the JSX `routineFor`)
 # ---------------------------------------------------------------------------
 def routine_for(d: date, is_shaving_day: bool, outdoor: bool = False,
-                breakout_week: bool = False, pha_opt_in: bool = False) -> dict:
+                breakout_week: bool = False, pha_opt_in: bool = False,
+                banish_day: bool = False, banish_recovery: int = 0,
+                serum_choice: str = BANISH_DEFAULT_SERUM) -> dict:
     """Evidence-based 7-day rotation.
 
     Mon Retinal · Tue Recovery · Wed Azelaic · Thu Anua ·
@@ -203,6 +244,73 @@ def routine_for(d: date, is_shaving_day: bool, outdoor: bool = False,
             "Seal with Vanicream Ceramide Moisturiser",
         ]
 
+    # ---- Banish-recovery override (days +1, +2 after a stamp) ----
+    # Suppresses ALL actives. Barrier-only routine.
+    if banish_recovery and not is_shaving_day and not banish_day:
+        label = f"Recovery (Banish day +{banish_recovery})"
+        color = "grey"
+        simple_meaning = (
+            f"Banish recovery — day +{banish_recovery}. The microchannels are still resealing. "
+            "No actives, no exfoliants, no fragrance. Just barrier support."
+        )
+        warning = (
+            "NO retinal, azelaic, Anua, PHA, BPO, or fragranced products. "
+            "SPF 50+ is mandatory outdoors for the next 7 days post-stamp."
+        )
+        am = [
+            "Cleanse with a mild cleanser (lukewarm water)",
+            "Apply a hyaluronic acid / Centella serum on damp skin",
+            "Seal with Vanicream Ceramide Moisturiser",
+            "Apply SPF 50+ as the final step (mandatory \u2014 reapply every 2h outdoors)",
+        ]
+        if (serum_choice or "").lower() == "l-aa":
+            am.insert(2, f"Skip your L-ascorbic acid serum (day +{banish_recovery} of 3)")
+        pm = [
+            "Cleanse gently \u2014 no scrubbing",
+            "Apply a hyaluronic acid / Centella serum on damp skin",
+            "Seal with Vanicream Ceramide Moisturiser",
+            "No actives tonight \u2014 the barrier is still rebuilding",
+        ]
+
+    # ---- Banish-day override (the night you stamp) ----
+    # PM is the stamping protocol. AM is normal but SPF 50+ from tomorrow on.
+    if banish_day and not is_shaving_day:
+        label = "Banish"
+        color = "purple"  # rendered as blue per restricted palette
+        simple_meaning = (
+            "Microneedling night. Open microchannels for 4\u201312 hours \u2014 "
+            "only barrier-safe products go on tonight."
+        )
+        warning = (
+            "NO retinal, azelaic, Anua, PHA, BPO, toner, exfoliant, or fragrance tonight. "
+            "Sterilise the head before AND after. Stamp 4\u20136\u00d7 per zone \u2014 lift between stamps, never drag. "
+            "SPF 50+ for the next 7 days outdoors."
+        )
+        # AM stays whatever the weekday's normal AM is, but emphasise SPF.
+        # Replace last SPF line with a force-SPF 50+ reminder.
+        if am:
+            am = list(am[:-1]) + [
+                "Apply SPF 50+ as the final step (mandatory tonight\u2192 next 7 days)"
+            ]
+        # PM: the stamping protocol.
+        pm_steps = [
+            "Cleanse with a gentle/mild cleanser (no acids, no exfoliants)",
+            "Pat dry and wait 5 minutes \u2014 skin must be 100% dry",
+            "Sterilise the Banisher head with rubbing alcohol; let it dry",
+            "Stamp 4\u20136\u00d7 per zone: forehead, each cheek, nose, chin",
+            "Lift between stamps \u2014 never drag, slide, or roll",
+            "Sterilise the head again and store dry",
+        ]
+        serum_step = _banish_serum_step(serum_choice)
+        if serum_step:
+            pm_steps.append(serum_step)
+        pm_steps += [
+            "Seal with Vanicream Ceramide Moisturiser",
+            "Skip: toner, retinal, azelaic, Anua, PHA, BPO, fragrance, niacinamide-with-acid",
+            "No SPF tonight \u2014 go straight to sleep on a clean pillowcase",
+        ]
+        pm = pm_steps
+
     if is_shaving_day:
         label = "Shaving"
         color = "teal"
@@ -230,6 +338,18 @@ def routine_for(d: date, is_shaving_day: bool, outdoor: bool = False,
             "No actives tonight \u2014 shave day = recovery day",
         ]
 
+    # Determine the routine kind for downstream UI (cell markers, banners).
+    if is_shaving_day:
+        kind = "shave"
+    elif banish_day:
+        kind = "banish-day"
+    elif banish_recovery:
+        kind = "banish-recovery"
+    elif breakout_week and d.weekday() == 5:
+        kind = "breakout"
+    else:
+        kind = "normal"
+
     return {
         "am": am,
         "pm": pm,
@@ -237,6 +357,7 @@ def routine_for(d: date, is_shaving_day: bool, outdoor: bool = False,
         "color": color,
         "simple_meaning": simple_meaning,
         "warning": warning,
+        "kind": kind,
     }
 
 
@@ -298,6 +419,12 @@ def _collect_state() -> dict:
         "intro_seen": bool(st.session_state.get("intro_seen", False)),
         "celebrated_streak": int(st.session_state.get("celebrated_streak", 0)),
         "pha_opt_in": bool(st.session_state.get("pha_opt_in", False)),
+        "banish_enabled": bool(st.session_state.get("banish_enabled", False)),
+        "banish_days": st.session_state.get("banish_days", {}),
+        "banish_cadence": st.session_state.get("banish_cadence", BANISH_DEFAULT_CADENCE),
+        "banish_recovery_days": int(st.session_state.get("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS)),
+        "banish_head_swapped": bool(st.session_state.get("banish_head_swapped", False)),
+        "banish_serum_choice": st.session_state.get("banish_serum_choice", BANISH_DEFAULT_SERUM),
     }
 
 
@@ -317,6 +444,12 @@ def hydrate(ls: LocalStorage = None) -> None:
             st.session_state.intro_seen = bool(data.get("intro_seen", False))
             st.session_state.celebrated_streak = int(data.get("celebrated_streak", 0) or 0)
             st.session_state.pha_opt_in = bool(data.get("pha_opt_in", False))
+            st.session_state.banish_enabled = bool(data.get("banish_enabled", False))
+            st.session_state.banish_days = data.get("banish_days", {}) or {}
+            st.session_state.banish_cadence = str(data.get("banish_cadence", BANISH_DEFAULT_CADENCE))
+            st.session_state.banish_recovery_days = int(data.get("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS) or BANISH_DEFAULT_RECOVERY_DAYS)
+            st.session_state.banish_head_swapped = bool(data.get("banish_head_swapped", False))
+            st.session_state.banish_serum_choice = str(data.get("banish_serum_choice", BANISH_DEFAULT_SERUM))
             st.session_state._hydrated = True
             return
         except Exception:
@@ -354,6 +487,12 @@ def hydrate(ls: LocalStorage = None) -> None:
     st.session_state.setdefault("intro_seen", False)
     st.session_state.setdefault("celebrated_streak", 0)
     st.session_state.setdefault("pha_opt_in", False)
+    st.session_state.setdefault("banish_enabled", False)
+    st.session_state.setdefault("banish_days", {})
+    st.session_state.setdefault("banish_cadence", BANISH_DEFAULT_CADENCE)
+    st.session_state.setdefault("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS)
+    st.session_state.setdefault("banish_head_swapped", False)
+    st.session_state.setdefault("banish_serum_choice", BANISH_DEFAULT_SERUM)
     st.session_state._hydrated = True
 
 
@@ -393,6 +532,7 @@ def save_intro_seen(ls: LocalStorage = None) -> None:
 def save_celebrated(ls: LocalStorage = None, streak: int = 0) -> None:
     st.session_state.celebrated_streak = int(streak)
     persist()
+def save_banish(ls: LocalStorage = None) -> None: persist()
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +707,10 @@ def build_legend_html(items: list[tuple[str, str, str, str, str]]) -> str:
         + "<div class='legend-footer'>"
         + "<span class='shave-tag'>✂ Shaving</span>"
         + "<span>Any day you mark — overrides actives with a calming routine.</span>"
+        + "</div>"
+        + "<div class='legend-footer'>"
+        + "<span class='shave-tag' style='background:#dbe7ff;color:#1e3a8a;'>⚠ Banish</span>"
+        + "<span>Microneedling night + recovery days. Barrier-only, no actives, SPF 50+ for 7 days.</span>"
         + "</div></div>"
     )
 
@@ -580,6 +724,8 @@ def build_day_card_html(
     am_done: bool = False,
     pm_done: bool = False,
     shaving: bool = False,
+    banish: bool = False,
+    banish_recovery: int = 0,
     disabled: bool = False,
 ) -> str:
     if disabled:
@@ -598,7 +744,14 @@ def build_day_card_html(
 
     am_cls = "cell-dot filled" if am_done else "cell-dot"
     pm_cls = "cell-dot filled" if pm_done else "cell-dot"
-    shave_html = "<div class='cell-shave'>✂</div>" if shaving else "<div></div>"
+    if shaving:
+        marker_html = "<div class='cell-shave'>✂</div>"
+    elif banish:
+        marker_html = "<div class='cell-shave'>⚠</div>"
+    elif banish_recovery:
+        marker_html = f"<div class='cell-shave'>+{banish_recovery}</div>"
+    else:
+        marker_html = "<div></div>"
     label_html = "" if disabled else f"<div class='cell-label'>{html.escape(label)}</div>"
     dots_html = "" if disabled else f"""
         <div class='cell-dots'>
@@ -609,7 +762,7 @@ def build_day_card_html(
 
     return f"""
         <div class="{' '.join(classes)}" style="background:{bg};color:{fg};border-color:{border};">
-            <div class="cell-top"><div class="cell-num">{d.day}</div>{shave_html}</div>
+            <div class="cell-top"><div class="cell-num">{d.day}</div>{marker_html}</div>
             <div class="cell-bot">{label_html}{dots_html}</div>
         </div>
     """
@@ -1627,7 +1780,19 @@ def render_calendar(month: int) -> None:
                 shaving = bool(st.session_state.shave_days.get(k))
                 outdoor = bool(st.session_state.get("outdoor_days", {}).get(k))
                 breakout = bool(st.session_state.get("breakout_week"))
-                r = routine_for(d, shaving, outdoor=outdoor, breakout_week=breakout)
+                pha_opt_in_now = bool(st.session_state.get("pha_opt_in"))
+                banish_enabled = bool(st.session_state.get("banish_enabled"))
+                banish_map = st.session_state.get("banish_days", {}) if banish_enabled else {}
+                recovery_days_n = int(st.session_state.get("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS))
+                serum_choice = str(st.session_state.get("banish_serum_choice", BANISH_DEFAULT_SERUM))
+                banish_today = is_banish_day(d, banish_map)
+                banish_recov = banish_recovery_offset(d, banish_map, recovery_days_n)
+                r = routine_for(
+                    d, shaving, outdoor=outdoor, breakout_week=breakout,
+                    pha_opt_in=pha_opt_in_now,
+                    banish_day=banish_today, banish_recovery=banish_recov,
+                    serum_choice=serum_choice,
+                )
                 is_sel = d == selected
                 is_today = d == today_real
                 am_done = bool(st.session_state.done.get(f"{k}-am"))
@@ -1652,6 +1817,8 @@ def render_calendar(month: int) -> None:
                         am_done=am_done,
                         pm_done=pm_done,
                         shaving=shaving,
+                        banish=banish_today,
+                        banish_recovery=banish_recov,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -1668,8 +1835,16 @@ def render_today_panel(ls: LocalStorage) -> None:
     outdoor = bool(st.session_state.get("outdoor_days", {}).get(k))
     breakout = bool(st.session_state.get("breakout_week"))
     pha_opt_in = bool(st.session_state.get("pha_opt_in"))
+    banish_enabled = bool(st.session_state.get("banish_enabled"))
+    banish_map = st.session_state.get("banish_days", {}) if banish_enabled else {}
+    recovery_days_n = int(st.session_state.get("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS))
+    serum_choice = str(st.session_state.get("banish_serum_choice", BANISH_DEFAULT_SERUM))
+    banish_today = is_banish_day(selected, banish_map)
+    banish_recov = banish_recovery_offset(selected, banish_map, recovery_days_n)
     r = routine_for(selected, shaving, outdoor=outdoor,
-                    breakout_week=breakout, pha_opt_in=pha_opt_in)
+                    breakout_week=breakout, pha_opt_in=pha_opt_in,
+                    banish_day=banish_today, banish_recovery=banish_recov,
+                    serum_choice=serum_choice)
     tint, ink, _accent = PILL_COLORS[r["color"]]
     _teal_tint, teal_ink, _teal_accent = PILL_COLORS["teal"]
 
@@ -1758,6 +1933,102 @@ def render_today_panel(ls: LocalStorage) -> None:
         save_outdoor(ls)
         st.rerun()
 
+    st.markdown(
+        "<div class='label-tiny' style='margin-top:14px;'>Banish Kit 3.0</div>",
+        unsafe_allow_html=True,
+    )
+    if not banish_enabled:
+        st.markdown(
+            "<div class='warn-rail' style='margin-top:6px;border-left-color:#2563eb;'>"
+            "Banish is currently off. Turn it on here to show stamp nights and recovery days on the calendar."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "⚠  Enable Banish kit",
+            key="banish-enable-inline",
+            use_container_width=True,
+        ):
+            st.session_state.banish_enabled = True
+            save_banish(ls)
+            st.toast("Banish enabled")
+            st.rerun()
+    else:
+        serum_labels = {
+            "althea": "Dr. Althea",
+            "banish": "Banish serum",
+            "other-gentle": "Other gentle vitamin C",
+            "l-aa": "L-ascorbic acid",
+            "none": "No vitamin C",
+        }
+        st.markdown(
+            f"<div style='font-size:12px;color:#1e3a8a;background:#eff6ff;border:1px solid #bfdbfe;"
+            f"border-radius:14px;padding:10px 12px;margin-top:6px;'>"
+            f"<strong>ON</strong> · {str(st.session_state.get('banish_cadence', BANISH_DEFAULT_CADENCE)).title()} cadence"
+            f" · {recovery_days_n} recovery day{'s' if recovery_days_n != 1 else ''}"
+            f" · Serum: {serum_labels.get(serum_choice, 'Dr. Althea')}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        if selected < date.today():
+            st.markdown(
+                "<div class='warn-rail' style='margin-top:6px;'>"
+                "Banish nights can only be scheduled on today or future dates."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ---- Banish-day toggle (only if Banish kit is enabled in sidebar) ----
+    if banish_enabled and not shaving and not banish_recov and selected >= date.today():
+        if st.button(
+            "⚠  Banish night scheduled" if banish_today else "⚠  Schedule Banish night",
+            key="banish-toggle",
+            use_container_width=True,
+        ):
+            bmap = st.session_state.get("banish_days", {})
+            if banish_today:
+                bmap.pop(k, None)
+                st.toast("Banish night removed")
+            else:
+                tomorrow_shave = st.session_state.shave_days.get(date_key(selected + timedelta(days=1)))
+                if tomorrow_shave:
+                    st.toast("Cannot stamp the night before a shave — pick another date")
+                else:
+                    bmap[k] = {"date": k, "completed": False}
+                    st.toast("Banish night scheduled — 7 days SPF afterward")
+            st.session_state.banish_days = bmap
+            save_banish(ls)
+            st.rerun()
+    elif banish_enabled and shaving:
+        st.markdown(
+            "<div class='warn-rail' style='margin-top:6px;'>"
+            "Cannot stamp on a shave day. Pick a non-shave evening with no actives planned."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Banish recovery banner
+    if banish_recov:
+        st.markdown(
+            f"<div class='warn-rail' style='margin-top:10px;border-left-color:#2563eb;'>"
+            f"<strong>Banish recovery — day +{banish_recov} of {recovery_days_n}.</strong> "
+            f"Barrier-only routine. SPF 50+ outdoors mandatory for 7 days post-stamp."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Tomorrow-Banish nudge: if tomorrow is a banish-day, no actives tonight
+    if banish_enabled and r['kind'] in ("normal", "breakout") and selected < END_DATE:
+        tomorrow_k = date_key(selected + timedelta(days=1))
+        if banish_map.get(tomorrow_k):
+            st.markdown(
+                "<div class='warn-rail' style='margin-top:10px;border-left-color:#dc2626;'>"
+                "<strong>Banish night tomorrow.</strong> Skip tonight's actives — "
+                "the skin should be calm and barrier-intact before stamping."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
     # Shave-tomorrow nudge: skip retinal/PHA tonight if shaving tomorrow
     if r['label'] in ("Retinal", "PHA (opt-in)"):
         tomorrow_key = date_key(selected + timedelta(days=1))
@@ -1834,8 +2105,12 @@ def render_today_panel(ls: LocalStorage) -> None:
         tomorrow = selected + timedelta(days=1)
         t_shaving = bool(st.session_state.shave_days.get(date_key(tomorrow)))
         t_outdoor = bool(st.session_state.get("outdoor_days", {}).get(date_key(tomorrow)))
+        t_banish = is_banish_day(tomorrow, banish_map)
+        t_recov = banish_recovery_offset(tomorrow, banish_map, recovery_days_n)
         t_r = routine_for(tomorrow, t_shaving, outdoor=t_outdoor,
-                          breakout_week=breakout)
+                          breakout_week=breakout,
+                          banish_day=t_banish, banish_recovery=t_recov,
+                          serum_choice=serum_choice)
         _t_tint, _t_ink, t_accent = PILL_COLORS[t_r["color"]]
         t_rel = "Tomorrow"
         if tomorrow == date.today():
@@ -1927,6 +2202,104 @@ def render_sidebar(ls: LocalStorage) -> None:
                 st.toast("PHA Saturday enabled" if not pha_now else "PHA Saturday disabled")
                 st.rerun()
 
+        # ---- Banish Kit 3.0 settings ----
+        st.markdown(
+            "<div class='label-tiny' style='margin-top:18px;'>Banish Kit 3.0 microneedling</div>",
+            unsafe_allow_html=True,
+        )
+        banish_on = bool(st.session_state.get("banish_enabled"))
+        if st.button(
+            "Banish kit: ON" if banish_on else "Banish kit: OFF (default)",
+            key="banish-enabled-toggle", use_container_width=True,
+        ):
+            st.session_state.banish_enabled = not banish_on
+            save_banish(ls)
+            st.toast("Banish enabled — schedule a night on a calendar day"
+                     if not banish_on else "Banish disabled")
+            st.rerun()
+
+        if banish_on:
+            cadence_options = ["weekly", "biweekly", "monthly"]
+            current_cadence = st.session_state.get("banish_cadence", BANISH_DEFAULT_CADENCE)
+            if current_cadence not in cadence_options:
+                current_cadence = BANISH_DEFAULT_CADENCE
+            new_cadence = st.selectbox(
+                "Cadence",
+                options=cadence_options,
+                index=cadence_options.index(current_cadence),
+                key="banish-cadence-select",
+                help="Suggested spacing between sessions. Biweekly is the safe default.",
+            )
+            if new_cadence != current_cadence:
+                st.session_state.banish_cadence = new_cadence
+                save_banish(ls)
+
+            current_recov = int(st.session_state.get("banish_recovery_days", BANISH_DEFAULT_RECOVERY_DAYS))
+            new_recov = st.slider(
+                "Recovery days after stamp",
+                min_value=1, max_value=4,
+                value=max(1, min(4, current_recov)),
+                key="banish-recovery-slider",
+                help="Days of barrier-only routine following each session. 2 is standard.",
+            )
+            if new_recov != current_recov:
+                st.session_state.banish_recovery_days = int(new_recov)
+                save_banish(ls)
+
+            serum_options = [
+                ("althea", "Dr. Althea Vit C Boosting (gentle, default)"),
+                ("banish", "Banish Vitamin C Serum"),
+                ("other-gentle", "Other gentle vit C derivative"),
+                ("l-aa", "L-ascorbic acid (skip on banish nights)"),
+                ("none", "No vitamin C"),
+            ]
+            current_serum = st.session_state.get("banish_serum_choice", BANISH_DEFAULT_SERUM)
+            serum_keys = [opt[0] for opt in serum_options]
+            if current_serum not in serum_keys:
+                current_serum = BANISH_DEFAULT_SERUM
+            new_serum_label = st.selectbox(
+                "Serum on banish nights",
+                options=[opt[1] for opt in serum_options],
+                index=serum_keys.index(current_serum),
+                key="banish-serum-select",
+                help="What to apply right after stamping. L-AA is acidic and will sting freshly stamped skin.",
+            )
+            new_serum = serum_keys[[opt[1] for opt in serum_options].index(new_serum_label)]
+            if new_serum != current_serum:
+                st.session_state.banish_serum_choice = new_serum
+                save_banish(ls)
+
+            # Session counter + head-swap reminder
+            sessions_done = sum(
+                1 for v in (st.session_state.get("banish_days") or {}).values()
+                if isinstance(v, dict) and v.get("completed")
+            )
+            head_swapped = bool(st.session_state.get("banish_head_swapped"))
+            sessions_since_swap = sessions_done if not head_swapped else (
+                sessions_done - BANISH_HEAD_LIFETIME_SESSIONS
+                if sessions_done > BANISH_HEAD_LIFETIME_SESSIONS else 0
+            )
+            st.markdown(
+                f"<div style='font-size:12px;color:#4b5563;margin-top:6px;'>"
+                f"Sessions completed: <strong>{sessions_done}</strong>"
+                f"{' · head swapped' if head_swapped else ''}</div>",
+                unsafe_allow_html=True,
+            )
+            if sessions_done >= BANISH_HEAD_LIFETIME_SESSIONS and not head_swapped:
+                st.markdown(
+                    "<div class='warn-rail' style='margin-top:6px;border-left-color:#dc2626;'>"
+                    "<strong>Swap your Banisher head.</strong> The needles dull after "
+                    f"{BANISH_HEAD_LIFETIME_SESSIONS} sessions — keep going on a dull head and you "
+                    "tear instead of channel.</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Mark new head installed", key="banish-head-swap",
+                             use_container_width=True):
+                    st.session_state.banish_head_swapped = True
+                    save_banish(ls)
+                    st.toast("Head swap recorded")
+                    st.rerun()
+
         # ---- Patch test tracker ----
         st.markdown("<div class='label-tiny' style='margin-top:18px;'>Patch test</div>",
                     unsafe_allow_html=True)
@@ -1982,7 +2355,9 @@ def render_sidebar(ls: LocalStorage) -> None:
                 if st.button("Yes, reset", key="reset-confirm",
                              type="primary", use_container_width=True):
                     st.session_state.done = {}
+                    st.session_state.banish_days = {}
                     save_done(ls)
+                    save_banish(ls)
                     st.session_state["confirm_reset"] = False
                     st.toast("Progress reset")
                     st.rerun()
