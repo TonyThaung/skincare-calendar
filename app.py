@@ -9,13 +9,21 @@ Run locally:
 """
 from __future__ import annotations
 
+import base64
 import calendar
 import html
 import json
+import zlib
 from datetime import date, timedelta
 
 import streamlit as st
-from streamlit_local_storage import LocalStorage
+import streamlit.components.v1 as components
+
+# Back-compat shim so existing function signatures still type-check.
+# Real persistence now flows through the URL query param + localStorage
+# bootstrap (see persist() / hydrate() below).
+class LocalStorage:  # noqa: N801 - kept for signature compatibility
+    pass
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -251,72 +259,140 @@ def _parse(value):
         return {}
 
 
-def hydrate(ls: LocalStorage) -> None:
+# ---------------------------------------------------------------------------
+# Persistence v2: URL query param + localStorage bootstrap
+#
+# The previous streamlit-local-storage approach was racey: its component
+# returns None on first render and cached None on rerun, so saves landed
+# before reads completed and overwrote real data with empty state.
+#
+# New approach:
+#   1. URL query param `?s=<encoded>` is the source of truth (synchronous).
+#   2. On every state change we update the URL AND mirror to browser
+#      localStorage via inline JS (so a fresh visit without the param can
+#      auto-restore by reading localStorage and reloading with ?s=...).
+# ---------------------------------------------------------------------------
+STATE_PARAM = "s"
+BROWSER_LS_KEY = "skincare-state-v1"
+
+
+def _encode_state(state: dict) -> str:
+    raw = json.dumps(state, separators=(",", ":"), default=str).encode()
+    return base64.urlsafe_b64encode(zlib.compress(raw, 9)).decode().rstrip("=")
+
+
+def _decode_state(s: str) -> dict:
+    pad = "=" * (-len(s) % 4)
+    raw = zlib.decompress(base64.urlsafe_b64decode(s + pad))
+    data = json.loads(raw.decode())
+    return data if isinstance(data, dict) else {}
+
+
+def _collect_state() -> dict:
+    return {
+        "done": st.session_state.get("done", {}),
+        "shave_days": st.session_state.get("shave_days", {}),
+        "outdoor_days": st.session_state.get("outdoor_days", {}),
+        "breakout_week": bool(st.session_state.get("breakout_week", False)),
+        "patch_test": st.session_state.get("patch_test", {}),
+        "intro_seen": bool(st.session_state.get("intro_seen", False)),
+        "celebrated_streak": int(st.session_state.get("celebrated_streak", 0)),
+        "pha_opt_in": bool(st.session_state.get("pha_opt_in", False)),
+    }
+
+
+def hydrate(ls: LocalStorage = None) -> None:
     if st.session_state.get("_hydrated"):
         return
 
-    # streamlit-local-storage needs the app to render at least twice before
-    # values come back (per upstream docs). One getAll() avoids the
-    # multi-getItem race; if it returns empty on the very first paint we
-    # rerun once so the JS bridge can deliver the cached values.
-    try:
-        store = ls.getAll() or {}
-    except Exception:
-        store = {}
-    if not isinstance(store, dict):
-        store = {}
+    qp = st.query_params.get(STATE_PARAM)
+    if qp:
+        try:
+            data = _decode_state(qp)
+            st.session_state.done = data.get("done", {}) or {}
+            st.session_state.shave_days = data.get("shave_days", {}) or {}
+            st.session_state.outdoor_days = data.get("outdoor_days", {}) or {}
+            st.session_state.breakout_week = bool(data.get("breakout_week", False))
+            st.session_state.patch_test = data.get("patch_test", {}) or {}
+            st.session_state.intro_seen = bool(data.get("intro_seen", False))
+            st.session_state.celebrated_streak = int(data.get("celebrated_streak", 0) or 0)
+            st.session_state.pha_opt_in = bool(data.get("pha_opt_in", False))
+            st.session_state._hydrated = True
+            return
+        except Exception:
+            pass
 
-    attempt = int(st.session_state.get("_hydrate_attempts", 0))
-    if not store and attempt < 2:
-        st.session_state._hydrate_attempts = attempt + 1
-        st.rerun()
+    # No URL state. Inject a one-shot JS bootstrap that reads localStorage
+    # and, if it has saved state, reloads the page with ?s=... in the URL.
+    if not st.session_state.get("_bootstrap_attempted"):
+        st.session_state._bootstrap_attempted = True
+        components.html(
+            f"""
+            <script>
+              (function() {{
+                try {{
+                  var top = window.parent;
+                  var url = new URL(top.location.href);
+                  if (url.searchParams.has({json.dumps(STATE_PARAM)})) return;
+                  var v = top.localStorage.getItem({json.dumps(BROWSER_LS_KEY)});
+                  if (v && v.length > 0) {{
+                    url.searchParams.set({json.dumps(STATE_PARAM)}, v);
+                    top.location.replace(url.toString());
+                  }}
+                }} catch (e) {{}}
+              }})();
+            </script>
+            """,
+            height=0,
+        )
 
-    def _get(k):
-        return store.get(k)
-
-    st.session_state.done = _parse(_get(LS_DONE_KEY))
-    st.session_state.shave_days = _parse(_get(LS_SHAVE_KEY))
-    st.session_state.outdoor_days = _parse(_get(LS_OUTDOOR_KEY))
-    breakout_raw = _get(LS_BREAKOUT_KEY)
-    st.session_state.breakout_week = bool(breakout_raw) and str(breakout_raw) not in ("", "false", "null", "0")
-    parsed_patch = _parse(_get(LS_PATCH_KEY))
-    st.session_state.patch_test = parsed_patch if isinstance(parsed_patch, dict) else {}
-    intro_raw = _get(LS_INTRO_KEY)
-    st.session_state.intro_seen = bool(intro_raw) and str(intro_raw) not in ("", "false", "null")
-    celebrated_raw = _get(LS_CELEBRATED_KEY)
-    try:
-        st.session_state.celebrated_streak = int(celebrated_raw) if celebrated_raw else 0
-    except (TypeError, ValueError):
-        st.session_state.celebrated_streak = 0
+    st.session_state.setdefault("done", {})
+    st.session_state.setdefault("shave_days", {})
+    st.session_state.setdefault("outdoor_days", {})
+    st.session_state.setdefault("breakout_week", False)
+    st.session_state.setdefault("patch_test", {})
+    st.session_state.setdefault("intro_seen", False)
+    st.session_state.setdefault("celebrated_streak", 0)
+    st.session_state.setdefault("pha_opt_in", False)
     st.session_state._hydrated = True
 
 
-def save_intro_seen(ls: LocalStorage) -> None:
-    ls.setItem(LS_INTRO_KEY, "1", key="ls-set-intro")
+def persist(ls: LocalStorage = None) -> None:
+    """Write current session_state to URL + browser localStorage."""
+    if not st.session_state.get("_hydrated"):
+        return
+    encoded = _encode_state(_collect_state())
+    try:
+        st.query_params[STATE_PARAM] = encoded
+    except Exception:
+        pass
+    components.html(
+        f"""
+        <script>
+          try {{
+            window.parent.localStorage.setItem(
+              {json.dumps(BROWSER_LS_KEY)},
+              {json.dumps(encoded)}
+            );
+          }} catch (e) {{}}
+        </script>
+        """,
+        height=0,
+    )
 
 
-def save_celebrated(ls: LocalStorage, streak: int) -> None:
-    ls.setItem(LS_CELEBRATED_KEY, str(streak), key="ls-set-celebrated")
-
-
-def save_outdoor(ls: LocalStorage) -> None:
-    ls.setItem(LS_OUTDOOR_KEY, json.dumps(st.session_state.outdoor_days), key="ls-set-outdoor")
-
-
-def save_breakout(ls: LocalStorage) -> None:
-    ls.setItem(LS_BREAKOUT_KEY, "1" if st.session_state.breakout_week else "0", key="ls-set-breakout")
-
-
-def save_patch(ls: LocalStorage) -> None:
-    ls.setItem(LS_PATCH_KEY, json.dumps(st.session_state.patch_test), key="ls-set-patch")
-
-
-def save_done(ls: LocalStorage) -> None:
-    ls.setItem(LS_DONE_KEY, json.dumps(st.session_state.done), key="ls-set-done")
-
-
-def save_shave(ls: LocalStorage) -> None:
-    ls.setItem(LS_SHAVE_KEY, json.dumps(st.session_state.shave_days), key="ls-set-shave")
+# Back-compat wrappers — every save_* function now persists the full state.
+def save_done(ls: LocalStorage = None) -> None: persist()
+def save_shave(ls: LocalStorage = None) -> None: persist()
+def save_outdoor(ls: LocalStorage = None) -> None: persist()
+def save_breakout(ls: LocalStorage = None) -> None: persist()
+def save_patch(ls: LocalStorage = None) -> None: persist()
+def save_intro_seen(ls: LocalStorage = None) -> None:
+    st.session_state.intro_seen = True
+    persist()
+def save_celebrated(ls: LocalStorage = None, streak: int = 0) -> None:
+    st.session_state.celebrated_streak = int(streak)
+    persist()
 
 
 # ---------------------------------------------------------------------------
@@ -1929,19 +2005,14 @@ def main() -> None:
 
     ls = LocalStorage()
 
+    # Hydrate from URL/localStorage first so defaults don't clobber real state.
+    hydrate(ls)
+
     if "selected_date" not in st.session_state:
         selected, month = initial_calendar_state()
         st.session_state.selected_date = selected
         st.session_state.month = month
-        st.session_state.done = {}
-        st.session_state.shave_days = {}
-        st.session_state.outdoor_days = {}
-        st.session_state.breakout_week = False
-        st.session_state.patch_test = {}
-        st.session_state.pha_opt_in = False
         st.session_state.confirm_reset = False
-
-    hydrate(ls)
 
     render_header()
     render_intro_banner(ls)
