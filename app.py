@@ -254,17 +254,36 @@ def _parse(value):
 def hydrate(ls: LocalStorage) -> None:
     if st.session_state.get("_hydrated"):
         return
-    st.session_state.done = _parse(ls.getItem(LS_DONE_KEY))
-    st.session_state.shave_days = _parse(ls.getItem(LS_SHAVE_KEY))
-    st.session_state.outdoor_days = _parse(ls.getItem(LS_OUTDOOR_KEY))
-    breakout_raw = ls.getItem(LS_BREAKOUT_KEY)
-    st.session_state.breakout_week = bool(breakout_raw) and breakout_raw not in ("", "false", "null", "0")
-    patch_raw = ls.getItem(LS_PATCH_KEY)
-    parsed_patch = _parse(patch_raw)
+
+    # streamlit-local-storage needs the app to render at least twice before
+    # values come back (per upstream docs). One getAll() avoids the
+    # multi-getItem race; if it returns empty on the very first paint we
+    # rerun once so the JS bridge can deliver the cached values.
+    try:
+        store = ls.getAll() or {}
+    except Exception:
+        store = {}
+    if not isinstance(store, dict):
+        store = {}
+
+    attempt = int(st.session_state.get("_hydrate_attempts", 0))
+    if not store and attempt < 2:
+        st.session_state._hydrate_attempts = attempt + 1
+        st.rerun()
+
+    def _get(k):
+        return store.get(k)
+
+    st.session_state.done = _parse(_get(LS_DONE_KEY))
+    st.session_state.shave_days = _parse(_get(LS_SHAVE_KEY))
+    st.session_state.outdoor_days = _parse(_get(LS_OUTDOOR_KEY))
+    breakout_raw = _get(LS_BREAKOUT_KEY)
+    st.session_state.breakout_week = bool(breakout_raw) and str(breakout_raw) not in ("", "false", "null", "0")
+    parsed_patch = _parse(_get(LS_PATCH_KEY))
     st.session_state.patch_test = parsed_patch if isinstance(parsed_patch, dict) else {}
-    intro_raw = ls.getItem(LS_INTRO_KEY)
-    st.session_state.intro_seen = bool(intro_raw) and intro_raw not in ("", "false", "null")
-    celebrated_raw = ls.getItem(LS_CELEBRATED_KEY)
+    intro_raw = _get(LS_INTRO_KEY)
+    st.session_state.intro_seen = bool(intro_raw) and str(intro_raw) not in ("", "false", "null")
+    celebrated_raw = _get(LS_CELEBRATED_KEY)
     try:
         st.session_state.celebrated_streak = int(celebrated_raw) if celebrated_raw else 0
     except (TypeError, ValueError):
